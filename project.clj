@@ -5,7 +5,7 @@
             :url "http://www.gnu.org/licenses/gpl.html"}
   :dependencies [[org.clojure/clojure "1.7.0"]
                  
-                 [bacure "0.5.3"]
+                 [bacure "0.5.4"]
                  [clj-time "0.9.0"]
                  [trptcolin/versioneer "0.2.0"]
 
