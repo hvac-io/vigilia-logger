@@ -11,7 +11,7 @@ One needs to have access to a Vigilia server to save the data.
 
 Add the following dependency in your `project.clj`:
 
-[![Clojars Project](http://clojars.org/io.hvac.vigilia.logger/vigilia-logger/latest-version.svg)](http://clojars.org/io.hvac.vigilia.logger/vigilia-logger)
+[![Clojars Project](http://clojars.org/io.hvac.vigilia/vigilia-logger/latest-version.svg)](http://clojars.org/io.hvac.vigilia/vigilia-logger)
 
 Require `logger.timed` and run `maybe-start-logging`. If a
 `project-id` is found in the configuration file, the logger will start
