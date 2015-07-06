@@ -3,9 +3,15 @@
 A Clojure library built on top of Bacure with the purpose of taking
 snapshots of a BACnet network at regular intervals.
 
+One needs to have access to a Vigilia server to save the data.
+
 ![Logs](/logs.jpg)
 
 ## Usage
+
+Add the following dependency in your `project.clj`:
+
+[![Clojars Project](http://clojars.org/io.hvac.vigilia.logger/vigilia-logger/latest-version.svg)](http://clojars.org/io.hvac.vigilia.logger/vigilia-logger)
 
 Require `logger.timed` and run `maybe-start-logging`. If a
 `project-id` is found in the configuration file, the logger will start
