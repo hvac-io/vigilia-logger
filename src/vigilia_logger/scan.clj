@@ -169,7 +169,7 @@
   (when-let [api-path (get-logger-api-path api-root-path project-id)]
     (let [response
           (-> api-path
-              (send-transit-request {:query-params {:key key}}))]
+              (send-transit-request {:query-params {:logger-key key}}))]
       (when-not (http-error? response)
         (:body response)))))
 
@@ -297,14 +297,14 @@
 (defn send-logs
   "Send the logs to the remote server. NIL if successful. In case of
   error, return the response."
-  [{:keys [api-path project-id logger-id logger-version key]} logs]
+  [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
   (let [response @(http/request 
                    {:url api-path
                     :method :post
                     :as :text
                     :headers {"content-type" "application/transit+json"}
                     :body (transit-encode
-                           {:key key
+                           {:logger-key logger-key
                             :logger-id logger-id
                             :logger-version logger-version
                             :logs logs}
@@ -317,7 +317,7 @@
   "Send the data to remote servers. Return NIL if successful."
   [data]
   (let [configs (get-logger-configs)
-        {:keys [project-id key api-root
+        {:keys [project-id logger-key api-root
                 logger-id]} configs
         project-logger-data (get-project-logger-data 
                              api-root project-id 
@@ -328,7 +328,7 @@
                   :project-id project-id
                   :logger-id (or logger-id (new-logger-id!))
                   :logger-version logger-version
-                  :key key}
+                  :logger-key logger-key}
                  data)
       :logging-not-allowed)))
 
