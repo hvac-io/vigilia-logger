@@ -170,17 +170,18 @@
     (let [response
           (-> api-path
               (send-transit-request {:query-params {:logger-key key}}))]
-      (when-not (http-error? response)
-        (:body response)))))
+      (if-not (http-error? response)
+        (:body response)
+        (print response)))))
 
 
 (defn credentials-valid?
   "Load the current configs and try to connect to the Vigilia
   server."[]
   (let [configs (get-logger-configs)
-        {:keys [project-id logger-key api-root]} configs]
+        {:keys [project-id logger-key]} configs]
     (when (get-project-logger-data 
-           api-root project-id logger-key)
+           (get-api-root) project-id logger-key)
       true)))
 
 
@@ -317,11 +318,11 @@
   "Send the data to remote servers. Return NIL if successful."
   [data]
   (let [configs (get-logger-configs)
-        {:keys [project-id logger-key api-root
+        {:keys [project-id logger-key
                 logger-id]} configs
         project-logger-data (get-project-logger-data 
-                             api-root project-id 
-                             key)]
+                             (get-api-root) project-id 
+                             logger-key)]
   ;; Check if server intend to accept our logs before sending them
     (if (:logging-allowed? project-logger-data)
       (send-logs {:api-path (:href project-logger-data)
@@ -361,7 +362,7 @@
                (let [error? (send-to-remote-server 
                              (edn/read-string (slurp (str path log-name))))]          
                  (if-not error?
-                   (do (clojure.java.io/delete-file log-name)
+                   (do (clojure.java.io/delete-file (str path log-name))
                        (println "Sent.")
                        (recur rest-logs))
                    (println "Remote server can't be reached or refused the log."))))
