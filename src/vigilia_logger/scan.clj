@@ -146,7 +146,8 @@
                                      "Accept" "application/transit+json"}}
                           (first opts))
         response @(http/request req-config)]
-    (if (and (not (http-error? response))
+    (if (and (not (or (http-error? response)
+                      (empty? (:body response))))
              (re-find #"application/transit\+json"
                       (get-in response [:headers :content-type])))
       (update-in response [:body] transit-decode :json)
