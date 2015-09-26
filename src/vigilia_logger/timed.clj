@@ -41,6 +41,8 @@
    (rd/all-extended-information) ;; recheck for extented information
    (scan/reset-devices-to-remove-table!))
 
+(def scan-active? (atom nil))
+
 (defn start-logging
   "Add jobs to be executed in the future and/or at regulvar interval.
 
@@ -71,20 +73,28 @@
               logger-job-fn (fn [] ;; will start logging and return the pool job
                               (ot/every time-interval
                                         (fn [] 
-                                          ;; we need to catch exception because
-                                          ;; we can't interrupt sleeping
-                                          ;; processes. (This means we might not
-                                          ;; succeed in restarting the local
-                                          ;; BACnet device).
-                                          (try (println "Scanning network...")
-                                               (rd/discover-network) ;; if new devices (or just slow)
-                                               (scan/scan-and-send)
-                                               (println 
-                                                (format "Scan completed in %.2fs"
-                                                        (/ @scan/last-scan-duration 1000.0)))
-                                               (scan/send-local-logs)
-                                               (catch Exception e
-                                                 (println (str "Exception: "(.getMessage e))))))
+                                          (if @scan-active?
+                                            ;; Skip this scan if the previous one isn't done yet
+                                            (println "Previous scan incomplete... skipping this round.")
+                                            
+                                            ;; we need to catch exception because
+                                            ;; we can't interrupt sleeping
+                                            ;; processes. (This means we might not
+                                            ;; succeed in restarting the local
+                                            ;; BACnet device).
+                                            (do
+                                              (try
+                                                (println "Scanning network...")
+                                                (reset! scan-active? true) ;; mark the scan as active
+                                                (rd/discover-network) ;; if new devices (or just slow)
+                                                (scan/scan-and-send)
+                                                (println 
+                                                 (format "Scan completed in %.2fs"
+                                                         (/ @scan/last-scan-duration 1000.0)))
+                                                (scan/send-local-logs)
+                                                (catch Exception e
+                                                  (println (str "Exception: "(.getMessage e)))))
+                                              (reset! scan-active? nil))))
                                         pool
                                         :desc "Logging the network"))
               logger-job-atom (atom (logger-job-fn))]
