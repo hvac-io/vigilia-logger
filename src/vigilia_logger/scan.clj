@@ -307,6 +307,8 @@
                     :headers {"content-type" "application/transit+json"}
                     :body (transit-encode
                            {:logger-key logger-key
+                            :logger-id logger-id
+                            :logger-version logger-version
                             :logs logs}
                             :json)})]
     (when (http-error? response)
@@ -341,12 +343,11 @@
          spit-file-fn (partial local/mkdir-spit
                                (str path "vigilia-" start-time ".log"))
          logger-id (:logger-id (get-logger-configs))
-         data (assoc (scan-network)
-                     :logger-version logger-version
-                     :logger-id (or logger-id (new-logger-id!)))]
+         data (scan-network)]
      ;; try to send to server
      (when (send-to-remote-server data) ;; nil on success
        ;; if it doesn't work, save data locally.
+       (print (send-to-remote-server data))
        (when (> 500 (count (find-unsent-logs)))
          (spit-file-fn data)))
      (reset! last-scan-duration (- (encoding/timestamp) start-time))))
