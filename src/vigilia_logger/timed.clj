@@ -1,7 +1,6 @@
 (ns vigilia-logger.timed
   (:require [vigilia-logger.scan :as scan]
             [overtone.at-at :as ot]
-            [bacure.core :as bac]
             [bacure.local-device :as ld]
             [bacure.remote-device :as rd]))
 
@@ -35,7 +34,7 @@
 (defn init!
   "Reset the local device, make a list of remote devices and find
    those that should be excluded based on their properties."[]
-   (ld/reset-local-device)
+   (ld/reset-local-device!)
    (rd/discover-network)
    (Thread/sleep 5000) ;; wait 5s
    (rd/all-extended-information) ;; recheck for extented information
@@ -90,7 +89,7 @@
                                                 (scan/scan-and-send)
                                                 (println 
                                                  (format "Scan completed in %.2fs"
-                                                         (/ @scan/last-scan-duration 1000.0)))
+                                                         (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
                                                 (scan/send-local-logs)
                                                 (catch Exception e
                                                   (println (str "Exception: "(.getMessage e)))))

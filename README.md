@@ -1,7 +1,8 @@
 # Vigilia-Logger
 
-A Clojure library built on top of Bacure with the purpose of taking
-snapshots of a BACnet network at regular intervals.
+A Clojure library built on top of
+[Bacure](https://github.com/Frozenlock/bacure) with the purpose of
+taking snapshots of a BACnet network at regular intervals.
 
 One needs to have access to a Vigilia server to save the data.
 
@@ -62,6 +63,7 @@ There is many configuration options:
  :time-interval ;; Time interval between each snapshots (in minutes)
  :criteria-coll ;; Advanced filtering options. See the Bacure library for details.
  :object-delay  ;; Delay (in ms) between each object scan of a device.
+ :target-objects ;; Map of devices and there associated target objects (if any).
  }
 
 ```
@@ -69,6 +71,6 @@ There is many configuration options:
 
 ## License
 
-Copyright © 2015 HVAC.IO
+Copyright © 2016 HVAC.IO
 
 GNU General Public License V3

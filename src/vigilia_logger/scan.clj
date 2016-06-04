@@ -3,16 +3,14 @@
             [org.httpkit.client :as http]
             [bacure.core :as bac]
             [bacure.remote-device :as rd]
-            [bacure.local-device :as ld]
             [bacure.local-save :as local]
             [vigilia-logger.encoding :as encoding]
             [trptcolin.versioneer.core :as version]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
-            [clojure.pprint :as pp])
+            [clojure.pprint :as pp]
+            [clj-time.core :as time])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
-
-
 
 
 ;;; logger ID generation
@@ -178,12 +176,13 @@
 
 (defn credentials-valid?
   "Load the current configs and try to connect to the Vigilia
-  server."[]
-  (let [configs (get-logger-configs)
-        {:keys [project-id logger-key]} configs]
-    (when (get-project-logger-data 
-           (get-api-root) project-id logger-key)
-      true)))
+  server."
+  ([] (let [configs (get-logger-configs)]
+        (credentials-valid? (:project-id configs) (:logger-key configs))))
+  ([project-id logger-key]
+   (when (get-project-logger-data 
+          (get-api-root) project-id logger-key)
+     true)))
 
 
 
@@ -200,7 +199,7 @@
 
 
 
-(def last-scan-timestamp (atom nil))
+
 
 
 ;;; section for 'advanced' filtering
@@ -210,19 +209,18 @@
   succeed, otherwise :keep. If the extended information is not yet
   available, simply return nil." [id criteria-coll]
   (try
-    (do (rd/extended-information id)
-        (when (rd/extended-information? id)
-          (let [remote-device-props
-                (bac/remote-object-properties id [:device id]
-                                              [:vendor-identifier :description :device-type
-                                               :vendor-name :object-name :model-name])]
-            ;;don't use `:all', it might not return the model-name if it's a
-            ;;device that doesn't support read-property-multiple.
-            (-> (filter (bac/where (first criteria-coll)) remote-device-props)
-                ((fn [x] (let [crits (next criteria-coll)]
-                           (cond (and (seq x) (seq (first criteria-coll))) :remove
-                                 crits (filter-device id crits)
-                                 :else :keep))))))))
+    (when (rd/extended-information id)
+      (let [remote-device-props
+            (bac/remote-object-properties id [:device id]
+                                          [:vendor-identifier :description :device-type
+                                           :vendor-name :object-name :model-name])]
+        ;;don't use `:all', it might not return the model-name if it's a
+        ;;device that doesn't support read-property-multiple.
+        (-> (filter (bac/where (first criteria-coll)) remote-device-props)
+            ((fn [x] (let [crits (next criteria-coll)]
+                       (cond (and (seq x) (seq (first criteria-coll))) :remove
+                             crits (filter-device id crits)
+                             :else :keep)))))))
     (catch Exception e nil)))
                      
 
@@ -262,7 +260,7 @@
          min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
          max-fn (fn [x] (if max-range (filter #(< % max-range) x) x))]
      ;; and now just keep the remote devices for which we have extended information
-     (-> (into #{} (filter rd/extended-information? (rd/remote-devices)))
+     (-> (into #{} (filter rd/extended-information (rd/remote-devices)))
          id-to-keep-fn
          id-to-remove-fn
          min-fn
@@ -273,17 +271,69 @@
          ))) 
 
 
-(def last-scan-duration (atom nil))
+
+
+;;;;;;;;;;
+
+(defonce scanning-state
+  (atom {:ids-to-scan #{}
+         :ids-scanning #{}
+         :ids-scanned #{}
+         :start-time (time/now)
+         :end-time (time/now)
+         :scanning-time-ms 0
+         :completed-scans 0}))
+
+(defn mark-as-scanning! [device-id]
+  (swap! scanning-state update-in [:ids-scanning] conj device-id))
+
+(defn mark-as-scanned! [device-id]
+  (let [ss @scanning-state]
+    (reset! scanning-state 
+            (-> (update-in ss [:ids-scanning] disj device-id)
+                (update-in [:ids-scanned] conj device-id)))))
+
+(defn mark-start-of-scan! [ids-to-scan]
+  (swap! scanning-state 
+         assoc
+         :scanning? true
+         :start-time (time/now)
+         :ids-to-scan (set ids-to-scan)))
+
+(defn mark-end-of-scan! []
+  (let [ss @scanning-state
+        end-time (time/now)
+        start-time (or (:start-time ss) (time/now))
+        completed (inc (:completed-scans ss))]
+    (swap! scanning-state 
+           assoc
+           :completed-scans completed
+           :scanning? nil
+           :end-time end-time
+           :scanning-time-ms (- (.getMillis end-time)
+                                (.getMillis start-time)))))
+
+;;;;;;;
+
 
 (defn scan-network
   "Scan the network and return a `snapshot' for logging purposes."[]
-  (let [read-object-delay (:object-delay (get-logger-configs))]
-    (reset! last-scan-timestamp (encoding/iso-8601-timestamp)) ;; for debugging
-    (->> (find-id-to-scan)
-         (pmap ;;use the power of parallelization!
-          (fn [device-id] 
-            (encoding/scan-device device-id read-object-delay)))
-         (apply merge))))
+  (let [configs (get-logger-configs)
+        read-object-delay (:object-delay configs)
+        target-objects (:target-objects configs)
+        ids-to-scan (find-id-to-scan)
+        scan-fn (fn [device-id]
+                  (mark-as-scanning! device-id)
+                  (let [scan-data (encoding/scan-device device-id 
+                                                        (get target-objects device-id)
+                                                        read-object-delay)]
+                    (mark-as-scanned! device-id)
+                    scan-data))]
+    ;; we begin a new scan
+    (mark-start-of-scan! ids-to-scan)
+    (let [scan-result (pmap scan-fn ids-to-scan)]
+      (mark-end-of-scan!)
+      (apply merge scan-result))))
 
 
 (defn find-unsent-logs []
@@ -349,8 +399,7 @@
        ;; if it doesn't work, save data locally.
        (print (send-to-remote-server data))
        (when (> 500 (count (find-unsent-logs)))
-         (spit-file-fn data)))
-     (reset! last-scan-duration (- (encoding/timestamp) start-time))))
+         (spit-file-fn data)))))
 
 
 (defn send-local-logs
@@ -368,5 +417,7 @@
                    (do (clojure.java.io/delete-file (str path log-name))
                        (println "Sent.")
                        (recur rest-logs))
-                   (println "Remote server can't be reached or refused the log."))))
+                   (do (println "Remote server can't be reached or refused the log.")
+                       (println (str "Http status code : " (:status error?)))
+                       (println (str "Body : " (:body error?)))))))
            (println "No more local logs to send."))))))

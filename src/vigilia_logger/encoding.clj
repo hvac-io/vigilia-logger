@@ -1,21 +1,18 @@
 (ns vigilia-logger.encoding
   (:require [bacure.core :as bac]
-            [bacure.coerce :as coerce]
-            [bacure.remote-device :as rd]
+            [bacure.coerce :as c]
             [clj-time.core :as time] ;already required in bacure
             [clojure.string :as s]
             [clojure.walk :as w]))
 
 (defn timestamp []
   (.getMillis (time/now)))
-
 (defn iso-8601-timestamp []
   (str (time/now)))
 
 ;; ================================================================
 ;; ======================= Data encoding ==========================
 ;; ================================================================
-
 (comment 
   ;; Here is how the data should be encoded
 
@@ -71,7 +68,7 @@
 (defn convert-units
   "Convert units keyword to their string value."[m]
   (if-let [unit (find m :units)]
-    (-> (coerce/c-engineering-units (val unit))
+    (-> (c/clojure->bacnet :engineering-units (val unit))
         ((fn [x] (assoc m :units (.toString x)))))
     m))
 
@@ -129,7 +126,7 @@
            (mapcat (fn [[k v]]
                      (when read-object-delay
                        (Thread/sleep read-object-delay))
-                     (try {(keyword (str (.intValue (bacure.coerce/c-object-type k))))
+                     (try {(keyword (str (.intValue (c/clojure->bacnet :object-type k))))
                            (get-properties-by-type device-id k v)}
                           (catch Exception e))) grouped)))))
 
@@ -145,15 +142,25 @@
     :scan-duration <time in ms>
     :objects \"<DATA>\"}}
   
+  Optional 'target-objects' is a collection of object
+  identifiers (such as [:analog-input 1]) to restrict the scan to
+  those objects.
+
   Optional 'read-object-delay' is the delay (in ms) between the scan
-  of each object within a device."
+  of each object within a device.
+  
+  If the remote device doesn't exist or isn't answering, return nil."
   ([device-id] (scan-device device-id nil))
-  ([device-id read-object-delay]
+  ([device-id device-target-objects] (scan-device device-id device-target-objects nil))
+  ([device-id device-target-objects read-object-delay]
    (try
-     (binding [bacure.coerce/*drop-ambiguous* true]
-       (let [start-time (timestamp)
-             object-identifiers (bac/remote-objects device-id)
-             properties (get-properties device-id object-identifiers read-object-delay)]
+     (let [start-time (timestamp)
+           ;; if we don't have device-target-objects, just use the remote-objects list
+           object-identifiers (or device-target-objects
+                                  (bac/remote-objects device-id))
+           properties (get-properties device-id object-identifiers read-object-delay)]
+       (println (str "object-identifiers " object-identifiers))
+       (when (seq properties) ;; only return something if we got some data
          {(keyword (str device-id))
           {:update (iso-8601-timestamp)
            :name (get-in properties [:8 (keyword (str device-id)) :Object-name])
