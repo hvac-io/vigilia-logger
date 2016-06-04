@@ -17,7 +17,7 @@ Add the following dependency in your `project.clj`:
 Require `logger.timed` and run `maybe-start-logging`. If a
 `project-id` is found in the configuration file, the logger will start
 to log the network.
-
+8
 
 ## Configuration file
 
