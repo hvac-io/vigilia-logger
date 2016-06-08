@@ -161,7 +161,7 @@
                                   (conj [:8 (keyword (str device-id))]) ;; we always add the device object
                                   (distinct))
            properties (get-properties device-id object-identifiers read-object-delay)]
-       (println (str "object-identifiers " object-identifiers))
+       ;(println (str "object-identifiers " object-identifiers))
        (when (seq properties) ;; only return something if we got some data
          {(keyword (str device-id))
           {:update (iso-8601-timestamp)
