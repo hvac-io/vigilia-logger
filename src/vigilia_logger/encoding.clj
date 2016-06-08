@@ -156,8 +156,10 @@
    (try
      (let [start-time (timestamp)
            ;; if we don't have device-target-objects, just use the remote-objects list
-           object-identifiers (or device-target-objects
-                                  (bac/remote-objects device-id))
+           object-identifiers (-> (or device-target-objects
+                                      (bac/remote-objects device-id))
+                                  (conj [:8 (keyword (str device-id))]) ;; we always add the device object
+                                  (distinct))
            properties (get-properties device-id object-identifiers read-object-delay)]
        (println (str "object-identifiers " object-identifiers))
        (when (seq properties) ;; only return something if we got some data

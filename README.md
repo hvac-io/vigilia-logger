@@ -63,7 +63,7 @@ There is many configuration options:
  :time-interval ;; Time interval between each snapshots (in minutes)
  :criteria-coll ;; Advanced filtering options. See the Bacure library for details.
  :object-delay  ;; Delay (in ms) between each object scan of a device.
- :target-objects ;; Map of devices and there associated target objects (if any).
+ :target-objects ;; Map of devices and there associated target object identifiers (if any).
  }
 
 ```
