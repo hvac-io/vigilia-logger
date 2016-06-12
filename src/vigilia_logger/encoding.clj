@@ -178,7 +178,8 @@
                                       (bac/remote-objects device-id))
                                   (conj [:device device-id]) ;; we always add the device object
                                   (distinct))
-           properties (get-properties device-id object-identifiers read-object-delay)]
+           properties (-> (get-properties device-id object-identifiers read-object-delay)
+                          (update-all-binaries))]
        (println (str "object-identifiers " (vec object-identifiers)))
        (when (seq properties) ;; only return something if we got some data
          {(keyword (str device-id))
