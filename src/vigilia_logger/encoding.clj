@@ -132,6 +132,24 @@
 
 ;; Catch exceptions everywhere we can: the logging MUST NOT stop
 
+(defn update-binary [properties object-type-key]
+  (if-let [binary-objects (get properties object-type-key)]
+    (->> {object-type-key (->> (for [[instance-key obj] binary-objects]
+                                 [instance-key (merge obj
+                                                      (when-let [pv (:Present-value obj)]
+                                                        {:Present-value (if (= pv :inactive) 0 1)}))])
+                               (into {}))}
+         (merge properties))
+    properties))
+
+(defn update-all-binaries
+  "Convert all :active and :inative values to 1s and 0s."
+  [properties]
+  (-> properties
+      (update-binary :3)
+      (update-binary :4)
+      (update-binary :5)))
+
 
 (defn scan-device
   "Return a map with the device-id as the key.
@@ -158,10 +176,10 @@
            ;; if we don't have device-target-objects, just use the remote-objects list
            object-identifiers (-> (or device-target-objects
                                       (bac/remote-objects device-id))
-                                  (conj [:8 (keyword (str device-id))]) ;; we always add the device object
+                                  (conj [:device device-id]) ;; we always add the device object
                                   (distinct))
            properties (get-properties device-id object-identifiers read-object-delay)]
-       ;(println (str "object-identifiers " object-identifiers))
+       (println (str "object-identifiers " (vec object-identifiers)))
        (when (seq properties) ;; only return something if we got some data
          {(keyword (str device-id))
           {:update (iso-8601-timestamp)
