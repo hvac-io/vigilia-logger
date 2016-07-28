@@ -69,44 +69,48 @@
         (reset! logging-state "Logging")
         (let [time-interval (min-ms (or (:time-interval (scan/get-logger-configs)) 10)) ;; default 10 minutes
               reset-interval (min-ms (* 60 24 7)) ;; 7 days
-              logger-job-fn (fn [] ;; will start logging and return the pool job
-                              (ot/every time-interval
-                                        (fn [] 
-                                          (if @scan-active?
-                                            ;; Skip this scan if the previous one isn't done yet
-                                            (println "Previous scan incomplete... skipping this round.")
-                                            
-                                            ;; we need to catch exception because
-                                            ;; we can't interrupt sleeping
-                                            ;; processes. (This means we might not
-                                            ;; succeed in restarting the local
-                                            ;; BACnet device).
-                                            (do
-                                              (try
-                                                (println "Scanning network...")
-                                                (reset! scan-active? true) ;; mark the scan as active
-                                                (rd/discover-network) ;; if new devices (or just slow)
-                                                (scan/scan-and-send)
-                                                (println 
-                                                 (format "Scan completed in %.2fs"
-                                                         (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
-                                                (scan/send-local-logs)
-                                                (catch Exception e
-                                                  (println (str "Exception: "(.getMessage e)))))
-                                              (reset! scan-active? nil))))
-                                        pool
-                                        :desc "Logging the network"))
+              after-scan-fn (atom nil)
+              logger-job-fn 
+              (fn [] ;; will start logging and return the pool job
+                (ot/every time-interval
+                          (fn [] 
+                            (if @scan-active?
+                              ;; Skip this scan if the previous one isn't done yet
+                              (println "Previous scan incomplete... skipping this round.")
+                              
+                              ;; we need to catch exception because
+                              ;; we can't interrupt sleeping
+                              ;; processes. (This means we might not
+                              ;; succeed in restarting the local
+                              ;; BACnet device).
+                              (do
+                                (try
+                                  (println "Scanning network...")
+                                  (reset! scan-active? true) ;; mark the scan as active
+                                  (rd/discover-network) ;; if new devices (or just slow)
+                                  (scan/scan-and-send)
+                                  (println 
+                                   (format "Scan completed in %.2fs"
+                                           (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
+                                  (scan/send-local-logs)
+                                  (catch Exception e
+                                    (println (str "Exception: "(.getMessage e)))))
+                                (when-let [f @after-scan-fn]
+                                  (f)
+                                  (reset! after-scan-fn nil))
+                                (reset! scan-active? nil))))
+                          pool
+                          :desc "Logging the network"))
               logger-job-atom (atom (logger-job-fn))]
           {:logger logger-job-atom
            :refresh  (ot/every reset-interval
-                               (fn []
-                                 (try 
-                                   (ot/kill @logger-job-atom)
-                                          (println "Restarting local BACnet device")
-                                          (init!)
-                                          (reset! logger-job-atom (logger-job-fn))
-                                          (catch Exception e
-                                            (println (str "Exception: "(.getMessage e))))))
+                               #(reset! after-scan-fn
+                                        (fn []
+                                          (try 
+                                            (println "Restarting local BACnet device")
+                                            (init!)
+                                            (catch Exception e
+                                              (println (str "Exception: "(.getMessage e)))))))
                                pool
                                :initial-delay reset-interval
                                :desc "Logging reset every week")})))))
