@@ -399,16 +399,17 @@
   error, return the response."
   [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
   (let [response @(http/request 
-                   {:url api-path
-                    :method :post
-                    :as :text
-                    :headers {"content-type" "application/transit+json"}
-                    :body (transit-encode
-                           {:logger-key logger-key
-                            :logger-id logger-id
-                            :logger-version logger-version
-                            :logs logs}
-                            :json)})]
+                   (with-proxy-configs
+                     {:url api-path
+                      :method :post
+                      :as :text
+                      :headers {"content-type" "application/transit+json"}
+                      :body (transit-encode
+                             {:logger-key logger-key
+                              :logger-id logger-id
+                              :logger-version logger-version
+                              :logs logs}
+                             :json)}))]
     (when (http-error? response)
       response)))
 
