@@ -9,7 +9,8 @@
             [clojure.java.io :as io]
             [clojure.edn :as edn]
             [clojure.pprint :as pp]
-            [clj-time.core :as time])
+            [clj-time.core :as time]
+            [clojure.data.codec.base64 :as b64])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
 
@@ -120,13 +121,54 @@
                                    204 205 206 207
                                    208 226]))))
 
+
+
+(defn auth-header [user pass]
+  (str "Basic " (String. ^bytes (b64/encode (.getBytes (str user ":" pass))))))
+
+
+(defmacro mapify
+  "Given some symbols, construct a map with the symbols as keys, and
+  the value of the symbols as the map values. For example:
+ (Let [aa 12]
+     (mapify aa))
+ => {:aa 12}"
+  [& symbols]
+  `(into {}
+         (filter second
+                 ~(into []
+                        (for [item symbols]
+                          [(keyword item) item])))))
+
+(defn proxy-configs
+  ([] (proxy-configs (get-logger-configs)))
+  ([configs]
+   (let [{:keys [proxy-host proxy-port proxy-user proxy-password] :as proxy}
+         (select-keys configs [:proxy-host :proxy-port :proxy-user :proxy-password])]
+     (when (and proxy-host proxy-port)
+       (merge (mapify proxy-host proxy-port)
+              (when (and proxy-user proxy-password)
+                {"Authorization" (auth-header proxy-user proxy-password)}))))))
+
+(defn with-proxy-configs
+  "Insert the configured proxy information into the request map."
+  ([request-map] (with-proxy-configs request-map (get-logger-configs)))
+  ([request-map configs]
+   (let [pc (proxy-configs configs)
+         host-map (select-keys pc [:proxy-host :proxy-port])
+         auth (select-keys pc ["Authorization"])]
+     (-> request-map
+         (merge host-map)
+         (update-in [:headers] merge auth)))))
+
 (defn can-connect?
   "True if we can reach the specified api-root"
   [api-root]
   (let [response @(http/request 
-                   {:url api-root
-                    :method :get
-                    :as :text})]    
+                   (with-proxy-configs 
+                     {:url api-root
+                      :method :get
+                      :as :text}))]
   (when-not 
       (http-error? response)
     true)))
@@ -137,12 +179,13 @@
   "Send a request with the necessary transit headers.
   Convert the data received back into edn."
   [url & [opts]]
-  (let [req-config (merge {:url url
-                           ;:method :get ;; default method
-                           ;:as :text
-                           :headers {"Content-Type" "application/transit+json" 
-                                     "Accept" "application/transit+json"}}
-                          (first opts))
+  (let [req-config (with-proxy-configs
+                     (merge {:url url
+                                        ;:method :get ;; default method
+                                        ;:as :text
+                             :headers {"Content-Type" "application/transit+json" 
+                                       "Accept" "application/transit+json"}}
+                            (first opts)))
         response @(http/request req-config)]
     (if (and (not (or (http-error? response)
                       (empty? (:body response))))
@@ -248,7 +291,12 @@
    (pmap remove-device? (rd/remote-devices)))
    
 
-
+(defn devices-with-extended-info []
+  ;; we catch errors because if the router for a given device is not
+  ;; found, it will throw an exception.
+  (filter (fn [id] (try (rd/extended-information id)
+                        (catch Exception e)))
+          (rd/remote-devices)))
 
 (defn find-id-to-scan
   "Check all the different filtering options and return a list of
@@ -260,7 +308,7 @@
          min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
          max-fn (fn [x] (if max-range (filter #(< % max-range) x) x))]
      ;; and now just keep the remote devices for which we have extended information
-     (-> (into #{} (filter rd/extended-information (rd/remote-devices)))
+     (-> (into #{} (devices-with-extended-info))
          id-to-keep-fn
          id-to-remove-fn
          min-fn
@@ -398,7 +446,7 @@
      (when (send-to-remote-server data) ;; nil on success
        ;; if it doesn't work, save data locally.
        (print (send-to-remote-server data))
-       (when (> 500 (count (find-unsent-logs)))
+       (when (> 2050 (count (find-unsent-logs))) ;; ~2 weeks
          (spit-file-fn data)))))
 
 
