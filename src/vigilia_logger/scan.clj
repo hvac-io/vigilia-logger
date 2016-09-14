@@ -371,7 +371,6 @@
         target-objects (:target-objects configs)
         ids-to-scan (find-id-to-scan)
         scan-fn (fn [device-id]
-                  (println "scanning "device-id "\n")
                   (mark-as-scanning! device-id)
                   (let [scan-data (encoding/scan-device device-id 
                                                         (get target-objects device-id)
