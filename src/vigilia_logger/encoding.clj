@@ -39,6 +39,14 @@
 ;; is required to be compatible with the logger V1.
 )
 
+;; Some object types aren't very useful; we can ignore them.
+(def ignored-object-types
+  [:trend-log
+   :trend-log-multiple
+   :notification-class
+   :event-log
+   :event-enrollment])
+
 
 ;; We really don't need to keep every properties. However, those we
 ;; choose to keep are determined by the object type.
@@ -48,18 +56,15 @@
   [object-type]
   (let [normal-IO-prop [:object-name :description :present-value
                         :units :status-flags]]
-    (when-not (re-find #"vendor-specific-(\d+)" (name object-type)) ;don't log vendor-specific
+    (when-not (or (some #{object-type} ignored-object-types)
+                  (re-find #"unknown-(\d+)" (name object-type))) ;don't log vendor-specific
       (get {:analog-input normal-IO-prop
             :analog-ouput normal-IO-prop
             :binary-input normal-IO-prop
             :binary-output normal-IO-prop
-            :device [:object-name :description :device-type
-                     :vendor-identifier :vendor-name :model-name]
+            :device [:object-name :description :device-type :vendor-identifier :vendor-name :model-name]
             :file [:object-name :description]
-            :loop [:object-name :description :present-value
-                   :manipulated-variable-reference
-                   :controlled-variable-reference :controlled-variable-value
-                   :setpoint-reference :setpoint :status-flags]
+            :loop [:object-name :description :present-value :manipulated-variable-reference :controlled-variable-reference :controlled-variable-value :setpoint-reference :setpoint :status-flags]
             :analog-value [:object-name :description :present-value]
             :schedule [:object-name :description :weekly-schedule :exception-schedule :status-flags]}
            object-type
@@ -98,12 +103,15 @@
    [{:<object-instance> properties-list}
     {:<object-instance> properties-list}...]"
   [device-id object-type object-identifier]
-  (let [f (fn [m] [(keyword (-> m :object-identifier last str));; object instance
-                   (-> m (dissoc :object-identifier) encode-properties)])]
-    (into {}
-          (map f
-               (bac/remote-object-properties device-id object-identifier
-                                             (prop-by-object-type object-type))))))
+  (let [f (fn [m]
+            (when m
+              [(keyword (-> m :object-identifier last str)) ;; object instance
+               (-> m (dissoc :object-identifier) encode-properties)]))]
+    (->> (when-let [props (seq (prop-by-object-type object-type))]
+           (bac/remote-object-properties device-id object-identifier props))
+         (map f)
+         (remove nil?)
+         (into {}))))
 
 (defn get-properties
   "Retrieve properties for each object.
@@ -122,13 +130,16 @@
   ([device-id object-identifiers] (get-properties device-id object-identifiers nil))
   ([device-id object-identifiers read-object-delay]
    (let [grouped (group-by first object-identifiers)] ;; group by object type
-     (into {}
-           (mapcat (fn [[k v]]
-                     (when read-object-delay
-                       (Thread/sleep read-object-delay))
-                     (try {(keyword (str (.intValue (c/clojure->bacnet :object-type k))))
-                           (get-properties-by-type device-id k v)}
-                          (catch Exception e))) grouped)))))
+     (->> (mapcat (fn [[k v]]
+                    (when read-object-delay
+                      (Thread/sleep read-object-delay))
+                    (try (let [props (get-properties-by-type device-id k v)]
+                           (when (seq props)
+                             {(keyword (str (.intValue (c/clojure->bacnet :object-type k))))
+                              props}))
+                         (catch Exception e))) grouped)
+          (remove nil?)
+          (into {})))))
 
 ;; Catch exceptions everywhere we can: the logging MUST NOT stop
 
