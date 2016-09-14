@@ -371,6 +371,7 @@
         target-objects (:target-objects configs)
         ids-to-scan (find-id-to-scan)
         scan-fn (fn [device-id]
+                  (println "scanning "device-id "\n")
                   (mark-as-scanning! device-id)
                   (let [scan-data (encoding/scan-device device-id 
                                                         (get target-objects device-id)
@@ -447,7 +448,7 @@
      (when (send-to-remote-server data) ;; nil on success
        ;; if it doesn't work, save data locally.
        (print (send-to-remote-server data))
-       (when (> 2050 (count (find-unsent-logs))) ;; ~2 weeks
+       (when (> 1008 (count (find-unsent-logs))) ;; ~1 week
          (spit-file-fn data)))))
 
 
