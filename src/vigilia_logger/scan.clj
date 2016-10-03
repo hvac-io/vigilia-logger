@@ -98,7 +98,7 @@
 
 (defn transit-decode
   [string reader-type]
-  (let [in (ByteArrayInputStream. (.getBytes string))
+  (let [in (ByteArrayInputStream. (.getBytes string "UTF-8"))
         reader (transit/reader in reader-type)]
     (transit/read reader)))
 
@@ -111,7 +111,7 @@
      ;; Write data to a stream
      (transit/write writer data)
      ;; get the encoded data
-     (.toString out))))
+     (.toString out "UTF-8"))))
 
 
 
