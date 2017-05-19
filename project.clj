@@ -1,4 +1,4 @@
-(defproject io.hvac.vigilia/vigilia-logger "1.0.9"
+(defproject io.hvac.vigilia/vigilia-logger "1.0.10"
   :description "A library/app to record a BACnet network"
   :url "https://hvac.io"
   :license {:name "GNU GENERAL PUBLIC LICENSE"
@@ -12,7 +12,7 @@
                  ;; communication with remote servers
                  [http-kit "2.2.0"]
                  [org.clojure/data.codec "0.1.0"]
-                 [com.cognitect/transit-clj "0.8.285"]
+                 [com.cognitect/transit-clj "0.8.300"]
 
                  ;; recurring jobs
                  [overtone/at-at "1.2.0"]]
