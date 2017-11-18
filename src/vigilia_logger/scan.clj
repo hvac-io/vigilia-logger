@@ -447,7 +447,7 @@
      (when (send-to-remote-server data) ;; nil on success
        ;; if it doesn't work, save data locally.
        (print (send-to-remote-server data))
-       (when (> 1008 (count (find-unsent-logs))) ;; ~1 week
+       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
          (spit-file-fn data)))))
 
 
