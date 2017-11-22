@@ -1,4 +1,4 @@
-(defproject io.hvac.vigilia/vigilia-logger "1.0.11"
+(defproject io.hvac.vigilia/vigilia-logger "1.0.12"
   :description "A library/app to record a BACnet network"
   :url "https://hvac.io"
   :license {:name "GNU GENERAL PUBLIC LICENSE"
