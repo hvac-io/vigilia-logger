@@ -54,20 +54,22 @@
 (defn prop-by-object-type
   "Properties to retrieve based on the object type."
   [object-type]
-  (let [normal-IO-prop [:object-name :description :present-value
-                        :units :status-flags :priority-array]
-        desired-props {:analog-input normal-IO-prop
-                       :analog-ouput normal-IO-prop
-                       :binary-input normal-IO-prop
-                       :binary-output normal-IO-prop
-                       :device [:object-name :description :device-type :vendor-identifier :vendor-name :model-name]
-                       :file [:object-name :description]
-                       :loop [:object-name :description :present-value :manipulated-variable-reference :controlled-variable-reference
-                              :controlled-variable-value :setpoint-reference :setpoint :status-flags]
-                       :schedule [:object-name :description :weekly-schedule :exception-schedule :status-flags]}
-        default-props [:object-name :description :present-value :status-flags :priority-array]]
-    (get desired-props object-type
-         default-props)))
+  (when-not (or (some #{object-type} ignored-object-types)
+                  (re-find #"unknown-(\d+)" (name object-type))) ;don't log vendor-specific
+    (let [normal-IO-prop [:object-name :description :present-value
+                          :units :status-flags :priority-array]
+          desired-props {:analog-input normal-IO-prop
+                         :analog-ouput normal-IO-prop
+                         :binary-input normal-IO-prop
+                         :binary-output normal-IO-prop
+                         :device [:object-name :description :device-type :vendor-identifier :vendor-name :model-name]
+                         :file [:object-name :description]
+                         :loop [:object-name :description :present-value :manipulated-variable-reference :controlled-variable-reference
+                                :controlled-variable-value :setpoint-reference :setpoint :status-flags]
+                         :schedule [:object-name :description :weekly-schedule :exception-schedule :status-flags]}
+          default-props [:object-name :description :present-value :status-flags :priority-array]]
+      (get desired-props object-type
+           default-props))))
 
 (defn convert-units
   "Convert units keyword to their string value."[m]
