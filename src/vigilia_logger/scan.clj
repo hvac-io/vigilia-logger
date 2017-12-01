@@ -380,7 +380,7 @@
                     scan-data))]
     ;; we begin a new scan
     (mark-start-of-scan! ids-to-scan)
-    (let [scan-result (pmap scan-fn ids-to-scan)]
+    (let [scan-result (doall (pmap scan-fn ids-to-scan))]
       (mark-end-of-scan!)
       (apply merge scan-result))))
 
