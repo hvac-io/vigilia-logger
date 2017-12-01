@@ -357,6 +357,7 @@
            assoc
            :completed-scans completed
            :scanning? nil
+           :ids-scanned #{}
            :end-time end-time
            :scanning-time-ms (- (.getMillis end-time)
                                 (.getMillis start-time)))))
