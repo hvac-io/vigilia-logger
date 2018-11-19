@@ -316,7 +316,7 @@
          remove-device ;; <-- last so we can avoid querying remote
                        ;; devices if we already know we don't want to
                        ;; keep them.
-         ))) 
+         )))
 
 
 
@@ -370,7 +370,8 @@
   (let [configs (get-logger-configs)
         read-object-delay (:object-delay configs)
         target-objects (:target-objects configs)
-        ids-to-scan (find-id-to-scan)
+        ids-to-scan (-> (find-id-to-scan)
+                        (shuffle))
         scan-fn (fn [device-id]
                   (mark-as-scanning! device-id)
                   (let [scan-data (encoding/scan-device device-id 
