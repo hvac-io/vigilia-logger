@@ -3,7 +3,8 @@
             [bacure.coerce :as c]
             [clj-time.core :as time] ;already required in bacure
             [clojure.string :as s]
-            [clojure.walk :as w]))
+            [clojure.walk :as w])
+  (:import com.serotonin.bacnet4j.exception.BACnetTimeoutException))
 
 (defn timestamp []
   (.getMillis (time/now)))
@@ -99,20 +100,16 @@
   
 
 (defn get-properties-by-type
-  "Get the properties and return them in the correct format.
-
-   [{:<object-instance> properties-list}
-    {:<object-instance> properties-list}...]"
+  "Get the properties for the provided object-identifiers"
   [device-id object-type object-identifier]
   (let [f (fn [m]
             (when m
               [(keyword (-> m :object-identifier last str)) ;; object instance
                (-> m (dissoc :object-identifier) encode-properties)]))]
     (->> (when-let [props (seq (prop-by-object-type object-type))]
-           (bac/remote-object-properties device-id object-identifier props))
-         (map f)
-         (remove nil?)
-         (into {}))))
+           (some-> (bac/remote-object-properties device-id [object-identifier] props)
+                   (first)
+                   (dissoc :object-identifier))))))
 
 (defn get-properties
   "Retrieve properties for each object.
@@ -124,23 +121,31 @@
    The returned properties are classed in a map, associated with the
    device instance as a key. It turns associated to the object type as
    a key.
-
+  
    {:0                  --- the object type
      {:1                --- the object instance
        {:Description    --- properties"
   ([device-id object-identifiers] (get-properties device-id object-identifiers nil))
   ([device-id object-identifiers read-object-delay]
-   (let [grouped (group-by first object-identifiers)] ;; group by object type
-     (->> (mapcat (fn [[k v]]
-                    (when read-object-delay
-                      (Thread/sleep read-object-delay))
-                    (try (let [props (get-properties-by-type device-id k v)]
-                           (when (seq props)
-                             {(keyword (str (.intValue (c/clojure->bacnet :object-type k))))
-                              props}))
-                         (catch Exception e))) grouped)
-          (remove nil?)
-          (into {})))))
+   (reduce (fn [result obj-id]
+             (when read-object-delay
+               (Thread/sleep read-object-delay))
+             (let [long-o-type (-> obj-id first)
+                   o-type (some-> (c/clojure->bacnet :object-type long-o-type)
+                                  (.intValue)
+                                  (str)
+                                  (keyword))
+                   o-inst (-> obj-id last str keyword)]
+               (let [props (try
+                             (get-properties-by-type device-id long-o-type obj-id)
+                             (catch Exception e
+                               (let [err-str (last (re-find #"\.([^.]*$)" (str e)))]
+                                 (println (str "Scan timeout for object " obj-id " on device "device-id))
+                                 {:scan {:error err-str}})))]
+                 (if props
+                   (assoc-in result [o-type o-inst] props)
+                   result))))
+           {} object-identifiers)))
 
 ;; Catch exceptions everywhere we can: the logging MUST NOT stop
 
