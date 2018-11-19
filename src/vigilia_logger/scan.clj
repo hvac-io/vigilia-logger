@@ -362,6 +362,16 @@
            :scanning-time-ms (- (.getMillis end-time)
                                 (.getMillis start-time)))))
 
+(defn reorder-ids
+  "Try to avoid consecutive ids" [ids]
+  (let [proc-qty (.availableProcessors (Runtime/getRuntime))
+        ids-qty (count ids)
+        pt (-> (/ ids-qty (+ 2 proc-qty))
+               (int)
+               (max 1)
+               (partition-all ids))]
+    (apply interleave pt)))
+
 ;;;;;;;
 
 
@@ -371,7 +381,7 @@
         read-object-delay (:object-delay configs)
         target-objects (:target-objects configs)
         ids-to-scan (-> (find-id-to-scan)
-                        (shuffle))
+                        (reorder-ids))
         scan-fn (fn [device-id]
                   (mark-as-scanning! device-id)
                   (let [scan-data (encoding/scan-device device-id 
