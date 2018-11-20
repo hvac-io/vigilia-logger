@@ -381,6 +381,7 @@
         read-object-delay (:object-delay configs)
         target-objects (:target-objects configs)
         ids-to-scan (-> (find-id-to-scan)
+                        (sort)
                         (reorder-ids))
         scan-fn (fn [device-id]
                   (mark-as-scanning! device-id)
