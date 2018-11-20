@@ -102,14 +102,11 @@
 (defn get-properties-by-type
   "Get the properties for the provided object-identifiers"
   [device-id object-type object-identifier]
-  (let [f (fn [m]
-            (when m
-              [(keyword (-> m :object-identifier last str)) ;; object instance
-               (-> m (dissoc :object-identifier) encode-properties)]))]
-    (->> (when-let [props (seq (prop-by-object-type object-type))]
-           (some-> (bac/remote-object-properties device-id [object-identifier] props)
-                   (first)
-                   (dissoc :object-identifier))))))
+  (when-let [props (seq (prop-by-object-type object-type))]
+    (some-> (bac/remote-object-properties device-id [object-identifier] props)
+            (first)
+            (dissoc :object-identifier)
+            (encode-properties))))
 
 (defn get-properties
   "Retrieve properties for each object.
