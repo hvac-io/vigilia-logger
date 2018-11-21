@@ -186,6 +186,7 @@
   ([device-id device-target-objects] (scan-device device-id device-target-objects nil))
   ([device-id device-target-objects read-object-delay]
    (try
+     (println (str "Scanning device "device-id))
      (let [start-time (timestamp)
            ;; if we don't have device-target-objects, just use the remote-objects list
            object-identifiers (-> (or device-target-objects
@@ -200,4 +201,6 @@
            :name (get-in properties [:8 (keyword (str device-id)) :Object-name])
            :objects properties
            :scan-duration (- (timestamp) start-time)}}))
-     (catch Exception e))))
+     (catch Exception e
+       (println (str "Error trying to scan device "device-id ": "
+                     e))))))
