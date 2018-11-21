@@ -60,7 +60,7 @@
 (defn save-logger-configs!
   "Save data to configs file. Return data."
   [data]
-  (let [pp-data (with-out-str (pp/pprint data))]
+  (let [pp-data (pr-str data)]
     (local/mkdir-spit (str path "/configs.edn") pp-data) data))
 
 
@@ -362,6 +362,15 @@
            :scanning-time-ms (- (.getMillis end-time)
                                 (.getMillis start-time)))))
 
+(defn interleave-all
+  "interleaves including remainder of longer seqs."
+  [& seqs]
+  (if (not-empty (first seqs))
+    (cons (first (first seqs))
+          (lazy-seq (apply interleave-all
+                           (filter not-empty
+                                   (concat (rest seqs) [(rest (first seqs))])))))))
+
 (defn reorder-ids
   "Try to avoid consecutive ids" [ids]
   (let [proc-qty (.availableProcessors (Runtime/getRuntime))
@@ -370,7 +379,7 @@
                (int)
                (max 1)
                (partition-all ids))]
-    (apply interleave pt)))
+    (apply interleave-all pt)))
 
 ;;;;;;;
 
