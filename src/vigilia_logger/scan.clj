@@ -88,10 +88,11 @@
     (or (:logger-id configs)
         (new-logger-id! configs))))
 
-
-
-
-
+(defn get-logs-path
+  "Return the location where logs are saved."
+  []
+  (or (:logs-path (get-logger-configs))
+      path))
 
 ;;; Remote server communication
 
@@ -416,8 +417,7 @@
 
 
 (defn find-unsent-logs []
-  (let [filename-list (seq (.listFiles (clojure.java.io/file
-                                        path)))]
+  (let [filename-list (seq (.listFiles (io/file (get-logs-path))))]
     (->> filename-list
          (map #(.getName %))
          (filter #(re-find #"vigilia.*\.log" %))
@@ -471,13 +471,14 @@
   2016 logs."
   []
   (let [start-time   (encoding/timestamp)
+        logs-path (get-logs-path)
         spit-file-fn (partial local/mkdir-spit
-                              (str path "vigilia-" (get-logger-id!) "-" start-time ".log"))
+                              (str logs-path "vigilia-" (get-logger-id!) "-" start-time ".log"))
         data         (scan-network)]
     ;; try to send to server
     (when (send-to-remote-server data) ;; nil on success
       ;; if it doesn't work, save data locally.
-      (print (send-to-remote-server data))
+      ;(print (send-to-remote-server data))
       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
         (spit-file-fn data)))))
 
@@ -485,7 +486,8 @@
 (defn send-local-logs
   "Check in the logger path for any unsent logs. If the server can't
    be reached (or simply refuses logs), keep them locally." []
-   (let [logs (find-unsent-logs)]
+  (let [logs (find-unsent-logs)
+        logs-path (get-logs-path)]
      (when (seq logs)
        (println (format "Found %d local logs..." (count logs)))
        (loop [[log-name & rest-logs] logs]
