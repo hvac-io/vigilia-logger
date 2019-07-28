@@ -2,7 +2,8 @@
   (:require [vigilia-logger.scan :as scan]
             [overtone.at-at :as ot]
             [bacure.local-device :as ld]
-            [bacure.remote-device :as rd]))
+            [bacure.remote-device :as rd]
+            [bacure.services :as services]))
 
 (def pool (ot/mk-pool))
 
@@ -87,6 +88,7 @@
                                 (try
                                   (println "Scanning network...")
                                   (reset! scan-active? true) ;; mark the scan as active
+                                  (services/send-who-is-router-to-network nil)
                                   (rd/discover-network) ;; if new devices (or just slow)
                                   (scan/scan-and-send)
                                   (println 
