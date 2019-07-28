@@ -70,14 +70,23 @@
        (catch Exception e)))
 
 
-(defn new-logger-id!
+(defn- new-logger-id!
   "Generate a new logger-id, save it into the config file and return
-  it." []
+  it."
+  [logger-configs]
   (let [new-id (generate-logger-id)]
-    (-> (get-logger-configs)
+    (-> logger-configs
         (assoc :logger-id new-id)
         (save-logger-configs!))
     new-id))
+
+(defn get-logger-id!
+  "Get the existing logger id, or generate one and save it before
+  returning it."
+  []
+  (let [configs (get-logger-configs)]
+    (or (:logger-id configs)
+        (new-logger-id! configs))))
 
 
 
@@ -449,7 +458,7 @@
     (if (:logging-allowed? project-logger-data)
       (send-logs {:api-path (:href project-logger-data)
                   :project-id project-id
-                  :logger-id (or logger-id (new-logger-id!))
+                  :logger-id (get-logger-id!)
                   :logger-version logger-version
                   :logger-key logger-key}
                  data)
@@ -457,20 +466,20 @@
 
 
 (defn scan-and-send
-  "Scan the network and send the result to remote servers. If the
-  server can't be reached, save the result in a
-  \"vigilia-<timestamp>\".log file. Only saves up to 500 logs." []
-   (let [start-time (encoding/timestamp)
-         spit-file-fn (partial local/mkdir-spit
-                               (str path "vigilia-" start-time ".log"))
-         logger-id (:logger-id (get-logger-configs))
-         data (scan-network)]
-     ;; try to send to server
-     (when (send-to-remote-server data) ;; nil on success
-       ;; if it doesn't work, save data locally.
-       (print (send-to-remote-server data))
-       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
-         (spit-file-fn data)))))
+  "Scan the network and send the result to remote servers. If the server
+  can't be reached, save the result in a .log file. Only saves up to
+  2016 logs."
+  []
+  (let [start-time   (encoding/timestamp)
+        spit-file-fn (partial local/mkdir-spit
+                              (str path "vigilia-" (get-logger-id!) "-" start-time ".log"))
+        data         (scan-network)]
+    ;; try to send to server
+    (when (send-to-remote-server data) ;; nil on success
+      ;; if it doesn't work, save data locally.
+      (print (send-to-remote-server data))
+      (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
+        (spit-file-fn data)))))
 
 
 (defn send-local-logs
