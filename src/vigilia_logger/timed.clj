@@ -3,7 +3,8 @@
             [overtone.at-at :as ot]
             [bacure.local-device :as ld]
             [bacure.remote-device :as rd]
-            [bacure.services :as services]))
+            [bacure.services :as services]
+            [clj-time.local :as l]))
 
 (def pool (ot/mk-pool))
 
@@ -86,7 +87,9 @@
                               ;; BACnet device).
                               (do
                                 (try
-                                  (println "Scanning network...")
+                                  (println (str "Starting network scan at "
+                                                (-> (l/local-now)
+                                                    (l/format-local-time :date-hour-minute-second))))
                                   (reset! scan-active? true) ;; mark the scan as active
                                   (services/send-who-is-router-to-network nil)
                                   (rd/discover-network) ;; if new devices (or just slow)
