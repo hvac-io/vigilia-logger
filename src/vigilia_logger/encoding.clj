@@ -1,6 +1,7 @@
 (ns vigilia-logger.encoding
   (:require [bacure.core :as bac]
             [bacure.coerce :as c]
+            [bacure.coerce.obj :as obj]
             [clj-time.core :as time] ;already required in bacure
             [clojure.string :as s]
             [clojure.walk :as w])
@@ -57,7 +58,10 @@
   [object-type]
   (when-not (or (some #{object-type} ignored-object-types)
                   (re-find #"unknown-(\d+)" (name object-type))) ;don't log vendor-specific
-    (let [normal-IO-prop [:object-name :description :present-value
+    (let [filter-props (fn [properties]
+                         ;; only keep the possible properties given the object-type
+                         (filter (set (obj/properties-by-option object-type :all)) properties))
+          normal-IO-prop [:object-name :description :present-value
                           :units :status-flags :priority-array]
           desired-props {:analog-input normal-IO-prop
                          :analog-ouput normal-IO-prop
@@ -69,8 +73,9 @@
                                 :controlled-variable-value :setpoint-reference :setpoint :status-flags]
                          :schedule [:object-name :description :weekly-schedule :exception-schedule :status-flags]}
           default-props [:object-name :description :present-value :status-flags :priority-array]]
-      (get desired-props object-type
-           default-props))))
+      (->> (get desired-props object-type
+                default-props)
+           (filter-props)))))
 
 (defn convert-units
   "Convert units keyword to their string value."[m]
@@ -93,6 +98,10 @@
   format." [m]
   (-> m convert-units capitalize-keys))
 
+(defn remove-errors
+  "Remove property fields with errors"
+  [m]
+  (apply dissoc m (for [[k v] m :when (:Error v)] k)))
 
 ;; ================================================================
 ;; ======================= Data retrieval =========================
@@ -137,8 +146,8 @@
                              (get-properties-by-type device-id long-o-type obj-id)
                              (catch Exception e
                                (let [err-str (last (re-find #"\.([^.]*$)" (str e)))]
-                                 (println (str "Scan timeout for object " obj-id " on device "device-id))
-                                 {:scan {:error err-str}})))]
+                                 (println (str "Scan error for object " obj-id " on device "device-id ":\n "err-str))
+                                 nil)))]
                  (if props
                    (assoc-in result [o-type o-inst] props)
                    result))))
