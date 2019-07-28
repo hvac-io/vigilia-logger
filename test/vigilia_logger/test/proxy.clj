@@ -182,7 +182,7 @@
     (scan/save-logger-configs! (merge proxy-auth-data
                                       {:proxy-host "http://127.0.0.1"
                                        :proxy-port 4349}))
-    (println (scan/with-proxy-configs {}))
+    ;(println (scan/with-proxy-configs {}))
     (testing "proxy with authentication and saved configs"  
       (let [resp @(http/get "http://localhost:4347/get"
                             (scan/with-proxy-configs {}))]
