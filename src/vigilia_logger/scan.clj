@@ -410,6 +410,7 @@
                     (mark-as-scanned! device-id)
                     scan-data))]
     ;; we begin a new scan
+    (println (str (encoding/iso-8601-timestamp) " - Scan network "))
     (mark-start-of-scan! ids-to-scan)
     (let [scan-result (doall (pmap scan-fn ids-to-scan))]
       (mark-end-of-scan!)
