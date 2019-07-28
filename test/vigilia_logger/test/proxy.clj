@@ -1,20 +1,20 @@
 (ns vigilia-logger.test.proxy
-  (:use clojure.test)
-  (:require [vigilia-logger.scan :as scan]
-            [compojure.core :refer [GET defroutes]]
-            [org.httpkit.server :refer [run-server]]
+  (:require [clj-http.client :as clj-http]
+            [clojure.test :refer :all]
+            [compojure.core :refer [defroutes GET]]
             [org.httpkit.client :as http]
-            [ring-request-proxy.core :as proxy]
+            [org.httpkit.server :refer [run-server]]
             [ring.adapter.jetty :refer [run-jetty]]
+            [ring.middleware.basic-authentication
+             :refer
+             [wrap-basic-authentication]]
             [ring.middleware.defaults :as defaults]
-            [ring.middleware.basic-authentication :refer [wrap-basic-authentication]]            
-            [clojure.java.io :as io]
-            [clj-http.client :as clj-http]))
-
+            [vigilia-logger.scan :as scan]
+            [vigilia-logger.test.util :as u]))
 
 ;; from the http-kit test directory
 (def ^:private not-found-response {:status 404
-                                   :body "{\"message\":\"Not found\"}"})
+                                   :body   "{\"message\":\"Not found\"}"})
 
 (defn- build-url [host path query-string]
   (let [url (.toString (java.net.URL. (java.net.URL. host) path))]
@@ -26,12 +26,12 @@
   not-found-response)
 
 (defn- create-proxy-fn [handler opts]
-  (let [identifier-fn (get opts :identifier-fn identity)
+  (let [identifier-fn  (get opts :identifier-fn identity)
         server-mapping (get opts :host-fn {})
-        insecure (get opts :allow-insecure-ssl false)]
+        insecure       (get opts :allow-insecure-ssl false)]
     (fn [request]
-      (let [request-key (identifier-fn request)
-            host (server-mapping request-key)
+      (let [request-key      (identifier-fn request)
+            host             (server-mapping request-key)
             stripped-headers (dissoc (:headers request) "content-length")]
         (if host
           (select-keys (clj-http/request {:url              (build-url host (:uri request) (:query-string request))
@@ -62,31 +62,31 @@
   (and (= name "me")
        (= pass "pass")))
 
-(def proxy-handler (proxy-request {:identifer-fn :server-name
+(def proxy-handler (proxy-request {:identifer-fn       :server-name
                                    :allow-insecure-ssl true
-                                   :host-fn (fn [{:keys [remote-addr server-port scheme] :as opts}]
-                                              (cond
-                                                (= 4347 server-port)
-                                                (str "http://" remote-addr ":" server-port)
-                                                (= 9898 server-port)
-                                                (str "https://" remote-addr ":" server-port)))}))
+                                   :host-fn            (fn [{:keys [remote-addr server-port scheme] :as opts}]
+                                                         (cond
+                                                           (= 4347 server-port)
+                                                           (str "http://" remote-addr ":" server-port)
+                                                           (= 9898 server-port)
+                                                           (str "https://" remote-addr ":" server-port)))}))
 
 (use-fixtures :once
   (fn [f]
-    (let [server (run-server
-                  (defaults/wrap-defaults test-routes defaults/site-defaults)
-                  {:port 4347})
-          ssl-server (run-jetty
-                      (defaults/wrap-defaults test-routes defaults/site-defaults)
-                      {:port 14347 :join? false :ssl-port 9898 :ssl? true :http? false
-                       :key-password "123456" :keystore "test/ssl_keystore"})
-          ssl-proxy-server (run-jetty
-                            proxy-handler
-                            {:port 14348 :join? false :ssl-port 9899 :ssl? true :http? false
-                             :key-password "123456" :keystore "test/ssl_keystore"})
-          proxy-server (run-server
-                        proxy-handler
-                        {:port 4348 :join? false :ssl? false})
+    (let [server            (run-server
+                             (defaults/wrap-defaults test-routes defaults/site-defaults)
+                             {:port 4347})
+          ssl-server        (run-jetty
+                             (defaults/wrap-defaults test-routes defaults/site-defaults)
+                             {:port         14347    :join?    false :ssl-port 9898 :ssl? true :http? false
+                              :key-password "123456" :keystore "test/ssl_keystore"})
+          ssl-proxy-server  (run-jetty
+                             proxy-handler
+                             {:port         14348    :join?    false :ssl-port 9899 :ssl? true :http? false
+                              :key-password "123456" :keystore "test/ssl_keystore"})
+          proxy-server      (run-server
+                             proxy-handler
+                             {:port 4348 :join? false :ssl? false})
           auth-proxy-server (run-server
                              (-> proxy-handler
                                  (wrap-basic-authentication authenticated?))
@@ -112,24 +112,6 @@
 ;;;;;;;;;;;;;;;
 
 
-(defn delete-recursively! [fname]
-  (let [func (fn [func f]
-               (when (.isDirectory f)
-                 (doseq [f2 (.listFiles f)]
-                   (func func f2)))
-               (io/delete-file f))]
-    (func func (io/file fname))))
-
-(defmacro with-test-configs [& body]
-  `(with-redefs [scan/path "test-path/"]
-     ;; save an initial config file
-     (scan/save-logger-configs! {:time-interval 1
-                                 :api-root "http://localhost:4347/get"
-                                 :project-id 12
-                                 :logger-key 12})
-     ~@body
-     (delete-recursively! scan/path)))
-
 (deftest proxy-nonexistent
   (testing "test call nonexistent proxy and fail"
     (let [{:keys [error]} @(http/get "http://127.0.0.1:4347/get"
@@ -149,14 +131,14 @@
 
 
 (deftest configs
-  (with-test-configs
+  (u/with-test-configs
     (testing "Various configs operations"
       (let [test-config-map {:time-interval 2}]
         (scan/save-logger-configs! test-config-map)
         (is (= test-config-map (scan/get-logger-configs)))))
     (testing "Proxy config"
-      (let [m {:proxy-host "http://127.0.0.1" :proxy-port 3030}
-            m2 (merge m proxy-auth-data)
+      (let [m         {:proxy-host "http://127.0.0.1" :proxy-port 3030}
+            m2        (merge m proxy-auth-data)
             m2-result (merge m {"Authorization" "Basic bWU6cGFzcw=="})]
         (is (= m (scan/proxy-configs m)))
         (is (= m2-result (scan/proxy-configs m2)))))))
@@ -178,7 +160,7 @@
                                     :proxy-port 4349})))]      
       (is (= 200 (:status resp)))
       (is (= "hello world" (:body resp)))))
-  (with-test-configs
+  (u/with-test-configs
     (scan/save-logger-configs! (merge proxy-auth-data
                                       {:proxy-host "http://127.0.0.1"
                                        :proxy-port 4349}))
