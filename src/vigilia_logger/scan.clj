@@ -96,13 +96,15 @@
 
 ;;; Remote server communication
 
+(def default-api-root "https://vigilia.hvac.io/api/v1")
+
 (defn get-api-root
   "Get the api root path. If nothing is found, default to
   https://vigilia.hvac.io/api/v1."
   []
   (-> (get-logger-configs)
       (:api-root)
-      (or "https://vigilia.hvac.io/api/v1")))
+      (or default-api-root)))
 
 
 
