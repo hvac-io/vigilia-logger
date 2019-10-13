@@ -10,7 +10,9 @@
             [clojure.edn :as edn]
             [clojure.pprint :as pp]
             [clj-time.core :as time]
-            [clojure.data.codec.base64 :as b64])
+            [clojure.data.codec.base64 :as b64]
+            [com.climate.claypoole :as cp]
+            [com.climate.claypoole.lazy :as lazy])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
 
@@ -383,15 +385,12 @@
                            (filter not-empty
                                    (concat (rest seqs) [(rest (first seqs))])))))))
 
+(def ^{:private true} batch-size 20)
+
 (defn reorder-ids
   "Try to avoid consecutive ids" [ids]
-  (let [proc-qty (.availableProcessors (Runtime/getRuntime))
-        ids-qty (count ids)
-        pt (-> (/ ids-qty (+ 2 proc-qty))
-               (int)
-               (max 1)
-               (partition-all ids))]
-    (apply interleave-all pt)))
+  (let [colls (partition-all (max 4 (int (/ batch-size 4))) ids)]
+    (apply interleave-all colls)))
 
 ;;;;;;;
 
@@ -413,7 +412,7 @@
                     scan-data))]
     ;; we begin a new scan
     (mark-start-of-scan! ids-to-scan)
-    (let [scan-result (doall (pmap scan-fn ids-to-scan))]
+    (let [scan-result (doall (lazy/upmap batch-size scan-fn ids-to-scan))]
       (mark-end-of-scan!)
       (apply merge scan-result))))
 

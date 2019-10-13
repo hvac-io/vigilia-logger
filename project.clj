@@ -1,4 +1,4 @@
-(defproject io.hvac.vigilia/vigilia-logger "1.0.15"
+(defproject io.hvac.vigilia/vigilia-logger "1.0.16"
   :description "A library/app to record a BACnet network"
   :url "https://hvac.io"
   :license {:name "GNU GENERAL PUBLIC LICENSE"
@@ -15,7 +15,10 @@
                  [com.cognitect/transit-clj "0.8.313"]
 
                  ;; recurring jobs
-                 [overtone/at-at "1.2.0"]]
+                 [overtone/at-at "1.2.0"]
+
+                 ;; Threadpool tools (pmap)
+                 [com.climate/claypoole "1.1.4"]]
 
   :plugins [[lein-ancient "0.6.15"]]
   :test-paths ["test"]
