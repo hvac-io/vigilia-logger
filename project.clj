@@ -28,4 +28,5 @@
                [ring-request-proxy "0.1.11"]
                [ring-basic-authentication "1.0.5"]
                [compojure "1.6.1"]
-               [ring/ring-jetty-adapter "1.8.0"]]}})
+               [ring/ring-jetty-adapter "1.8.0"]
+               [org.slf4j/slf4j-log4j12 "1.7.30"]]}})
