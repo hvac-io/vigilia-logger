@@ -1,12 +1,11 @@
 (ns vigilia-logger.encoding
-  (:require [bacure.core :as bac]
-            [bacure.coerce :as c]
+  (:require [bacure.coerce :as c]
             [bacure.coerce.obj :as obj]
-            [clj-time.core :as time] ;already required in bacure
+            [bacure.core :as bac]
+            [bacure.remote-device :as rd]
+            [clj-time.core :as time]
             [clojure.string :as s]
-            [clojure.walk :as w]
-            [bacure.remote-device :as rd])
-  (:import com.serotonin.bacnet4j.exception.BACnetTimeoutException))
+            [clojure.walk :as w]))
 
 (defn timestamp []
   (.getMillis (time/now)))
