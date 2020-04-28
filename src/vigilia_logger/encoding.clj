@@ -109,7 +109,7 @@
   
 
 (defn get-properties-by-type
-  "Get the properties for the provided object-identifiers"
+  "Get the properties for the provided object-identifier"
   [device-id object-type object-identifier]
   (when-let [props (seq (prop-by-object-type object-type))]
     (some-> (bac/remote-object-properties device-id [object-identifier] props)
@@ -120,38 +120,49 @@
 (defn get-properties
   "Retrieve properties for each object.
 
-   The different properties to retrieve are determined by the object
-   type. Consequently, each request is divided by
-   object-type.
+  The different properties to retrieve are determined by the object
+  type. Consequently, each request is divided by object-type.
 
-   The returned properties are classed in a map, associated with the
-   device instance as a key. It turns associated to the object type as
-   a key.
+  The returned properties are classed in a map, associated with the
+  device instance as a key. It turns associated to the object type as
+  a key.
   
-   {:0                  --- the object type
-     {:1                --- the object instance
-       {:Description    --- properties"
+  {:0                  --- the object type
+    {:1                --- the object instance
+      {:Description    --- properties
+
+  The loop will terminate early if 3 consecutive reads fail."
   ([device-id object-identifiers] (get-properties device-id object-identifiers nil))
   ([device-id object-identifiers read-object-delay]
-   (reduce (fn [result obj-id]
-             (when read-object-delay
-               (Thread/sleep read-object-delay))
-             (let [long-o-type (-> obj-id first)
-                   o-type (some-> (c/clojure->bacnet :object-type long-o-type)
-                                  (.intValue)
-                                  (str)
-                                  (keyword))
-                   o-inst (-> obj-id last str keyword)]
-               (let [props (try
-                             (get-properties-by-type device-id long-o-type obj-id)
-                             (catch Exception e
-                               (let [err-str (last (re-find #"\.([^.]*$)" (str e)))]
-                                 (println (str "Scan error for object " obj-id " on device "device-id ":\n "err-str))
-                                 nil)))]
-                 (if props
-                   (assoc-in result [o-type o-inst] props)
-                   result))))
-           {} object-identifiers)))
+   (let [consecutive-errors-qty (atom 0)
+         continue-a (atom true)]
+     (reduce (fn [result obj-id]
+               (when @continue-a
+                 (when read-object-delay
+                   (Thread/sleep read-object-delay))
+                 (let [long-o-type (-> obj-id first)
+                       o-type (some-> (c/clojure->bacnet :object-type long-o-type)
+                                      (.intValue)
+                                      (str)
+                                      (keyword))
+                       o-inst (-> obj-id last str keyword)]
+                   (let [props (try
+                                 (get-properties-by-type device-id long-o-type obj-id)
+                                 (reset! consecutive-errors-qty 0)
+
+                                 (catch Exception e
+                                   (let [err-str (last (re-find #"\.([^.]*$)" (str e)))]
+                                     (println (str "Scan error for object " obj-id " on device "device-id ":\n "err-str)))
+
+                                   ;; loop exit
+                                   (swap! consecutive-errors-qty inc)
+                                   (when (>= @consecutive-errors-qty 3)
+                                     (println (str "3 consecutive read errors for device "device-id ", skipping remaining objects."))
+                                     (reset! continue-a false))))]
+                     (if props
+                       (assoc-in result [o-type o-inst] props)
+                       result)))))
+             {} object-identifiers))))
 
 ;; Catch exceptions everywhere we can: the logging MUST NOT stop
 
@@ -206,9 +217,9 @@
                           (update-all-binaries))]
        (when (seq properties) ;; only return something if we got some data
          {(keyword (str device-id))
-          {:update (iso-8601-timestamp)
-           :name (get-in properties [:8 (keyword (str device-id)) :Object-name])
-           :objects properties
+          {:update        (iso-8601-timestamp)
+           :name          (get-in properties [:8 (keyword (str device-id)) :Object-name])
+           :objects       properties
            :scan-duration (- (timestamp) start-time)}}))
      (catch Exception e
        (println (str "Error trying to scan device "device-id ": "
