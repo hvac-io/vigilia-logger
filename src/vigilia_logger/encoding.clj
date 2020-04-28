@@ -135,6 +135,7 @@
   ([device-id object-identifiers] (get-properties device-id object-identifiers nil))
   ([device-id object-identifiers read-object-delay]
    (let [consecutive-errors-qty (atom 0)
+         max-errors 3
          continue-a (atom true)]
      (reduce (fn [result obj-id]
                (when @continue-a
@@ -156,8 +157,8 @@
 
                                    ;; loop exit
                                    (swap! consecutive-errors-qty inc)
-                                   (when (>= @consecutive-errors-qty 3)
-                                     (println (str "3 consecutive read errors for device "device-id ", skipping remaining objects."))
+                                   (when (>= @consecutive-errors-qty max-errors)
+                                     (println (str max-errors" consecutive read errors for device "device-id ", skipping remaining objects."))
                                      (reset! continue-a false))))]
                      (if props
                        (assoc-in result [o-type o-inst] props)
