@@ -1,10 +1,10 @@
 (ns vigilia-logger.timed
-  (:require [vigilia-logger.scan :as scan]
-            [overtone.at-at :as ot]
-            [bacure.local-device :as ld]
+  (:require [bacure.local-device :as ld]
             [bacure.remote-device :as rd]
             [bacure.services :as services]
-            [clj-time.local :as l]))
+            [clj-time.local :as l]
+            [overtone.at-at :as ot]
+            [vigilia-logger.scan :as scan]))
 
 (def pool (ot/mk-pool))
 
@@ -94,7 +94,7 @@
                                   (services/send-who-is-router-to-network nil)
                                   (rd/discover-network) ;; if new devices (or just slow)
                                   (scan/scan-and-send)
-                                  (println 
+                                  (println
                                    (format "Scan completed in %.2fs"
                                            (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
                                   (scan/send-local-logs)

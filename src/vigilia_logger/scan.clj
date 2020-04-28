@@ -1,20 +1,17 @@
 (ns vigilia-logger.scan
-  (:require [cognitect.transit :as transit]
-            [org.httpkit.client :as http]
-            [bacure.core :as bac]
-            [bacure.remote-device :as rd]
+  (:require [bacure.core :as bac]
             [bacure.local-save :as local]
-            [vigilia-logger.encoding :as encoding]
-            [trptcolin.versioneer.core :as version]
-            [clojure.java.io :as io]
-            [clojure.edn :as edn]
-            [clojure.pprint :as pp]
+            [bacure.remote-device :as rd]
             [clj-time.core :as time]
             [clojure.data.codec.base64 :as b64]
-            [com.climate.claypoole :as cp]
-            [com.climate.claypoole.lazy :as lazy])
+            [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [cognitect.transit :as transit]
+            [com.climate.claypoole.lazy :as lazy]
+            [org.httpkit.client :as http]
+            [trptcolin.versioneer.core :as version]
+            [vigilia-logger.encoding :as encoding])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
-
 
 ;;; logger ID generation
 
@@ -494,8 +491,8 @@
        (loop [[log-name & rest-logs] logs]
          (if log-name
            (do (println (str "sending " log-name "..."))
-               (let [error? (send-to-remote-server 
-                             (edn/read-string (slurp (str path log-name))))]          
+               (let [error? (send-to-remote-server
+                             (edn/read-string (slurp (str path log-name))))]
                  (if-not error?
                    (do (clojure.java.io/delete-file (str path log-name))
                        (println "Sent.")
