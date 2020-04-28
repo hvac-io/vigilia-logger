@@ -71,7 +71,7 @@
                          :file [:object-name :description]
                          :loop [:object-name :description :present-value :manipulated-variable-reference :controlled-variable-reference
                                 :controlled-variable-value :setpoint-reference :setpoint :status-flags]
-                         :schedule [:object-name :description :weekly-schedule :exception-schedule :status-flags]}
+                         :schedule [:object-name :description :present-value :weekly-schedule :exception-schedule :status-flags]}
           default-props [:object-name :description :present-value :status-flags :priority-array]]
       (->> (get desired-props object-type
                 default-props)
