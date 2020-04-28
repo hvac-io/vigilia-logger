@@ -4,7 +4,8 @@
             [bacure.coerce.obj :as obj]
             [clj-time.core :as time] ;already required in bacure
             [clojure.string :as s]
-            [clojure.walk :as w])
+            [clojure.walk :as w]
+            [bacure.remote-device :as rd])
   (:import com.serotonin.bacnet4j.exception.BACnetTimeoutException))
 
 (defn timestamp []
@@ -207,20 +208,22 @@
   ([device-id device-target-objects read-object-delay]
    (try
      (println (str "Scanning device "device-id))
-     (let [start-time (timestamp)
-           ;; if we don't have device-target-objects, just use the remote-objects list
-           object-identifiers (-> (or device-target-objects
-                                      (bac/remote-objects device-id))
-                                  (conj [:device device-id]) ;; we always add the device object
-                                  (distinct))
-           properties (-> (get-properties device-id object-identifiers read-object-delay)
-                          (update-all-binaries))]
-       (when (seq properties) ;; only return something if we got some data
-         {(keyword (str device-id))
-          {:update        (iso-8601-timestamp)
-           :name          (get-in properties [:8 (keyword (str device-id)) :Object-name])
-           :objects       properties
-           :scan-duration (- (timestamp) start-time)}}))
+     (if-not (rd/is-alive? device-id)
+       (println (str "Device "device-id " is unreachable."))
+       (let [start-time (timestamp)
+             ;; if we don't have device-target-objects, just use the remote-objects list
+             object-identifiers (-> (or device-target-objects
+                                        (bac/remote-objects device-id))
+                                    (conj [:device device-id]) ;; we always add the device object
+                                    (distinct))
+             properties (-> (get-properties device-id object-identifiers read-object-delay)
+                            (update-all-binaries))]
+         (when (seq properties) ;; only return something if we got some data
+           {(keyword (str device-id))
+            {:update        (iso-8601-timestamp)
+             :name          (get-in properties [:8 (keyword (str device-id)) :Object-name])
+             :objects       properties
+             :scan-duration (- (timestamp) start-time)}})))
      (catch Exception e
        (println (str "Error trying to scan device "device-id ": "
                      e))))))
