@@ -148,8 +148,9 @@
                                       (keyword))
                        o-inst (-> obj-id last str keyword)]
                    (let [props (try
-                                 (get-properties-by-type device-id long-o-type obj-id)
-                                 (reset! consecutive-errors-qty 0)
+                                 (let [result (get-properties-by-type device-id long-o-type obj-id)]
+                                   (reset! consecutive-errors-qty 0)
+                                   result)
 
                                  (catch Exception e
                                    (let [err-str (last (re-find #"\.([^.]*$)" (str e)))]

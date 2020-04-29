@@ -1,4 +1,4 @@
-(defproject io.hvac.vigilia/vigilia-logger "1.0.17"
+(defproject io.hvac.vigilia/vigilia-logger "1.0.18"
   :description "A library/app to record a BACnet network"
   :url "https://hvac.io"
   :license {:name "GNU GENERAL PUBLIC LICENSE"
@@ -28,5 +28,4 @@
                [ring-request-proxy "0.1.11"]
                [ring-basic-authentication "1.0.5"]
                [compojure "1.6.1"]
-               [ring/ring-jetty-adapter "1.8.0"]
-               [org.slf4j/slf4j-log4j12 "1.7.30"]]}})
+               [ring/ring-jetty-adapter "1.8.0"]]}})
