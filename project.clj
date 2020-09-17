@@ -10,7 +10,7 @@
                  [trptcolin/versioneer "0.2.0"]
 
                  ;; communication with remote servers
-                 [http-kit "2.4.0-alpha3"] ; alpha needed for java 11 support
+                 [http-kit "2.4.0"]
                  [org.clojure/data.codec "0.1.1"]
                  [com.cognitect/transit-clj "1.0.324"]
 
@@ -26,6 +26,8 @@
              {:dependencies
               [[ring/ring-defaults "0.3.2"]
                [ring-request-proxy "0.1.11"]
-               [ring-basic-authentication "1.0.5"]
-               [compojure "1.6.1"]
-               [ring/ring-jetty-adapter "1.8.0"]]}})
+               [ring-basic-authentication "1.1.0"]
+               [compojure "1.6.2"]
+               [ring/ring-jetty-adapter "1.8.1"]
+               ;; error logs
+               [org.slf4j/slf4j-nop "1.7.30"]]}})
