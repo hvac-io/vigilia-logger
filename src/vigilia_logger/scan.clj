@@ -480,6 +480,15 @@
       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
         (spit-file-fn data)))))
 
+(defn read-log
+  "Read the log and return a map or nil."
+  [logs-path log-name]
+  (let [log-file (io/file logs-path log-name)]
+    (let [log (try (edn/read-string (slurp log-file))
+                   (catch Exception e ::error))]
+      (if (map? log) ; everything other than a map returns nil
+        log
+        nil))))
 
 (defn send-local-logs
   "Check in the logger path for any unsent logs. If the server can't
@@ -491,12 +500,13 @@
        (loop [[log-name & rest-logs] logs]
          (if log-name
            (do (println (str "sending " log-name "..."))
-               (let [error? (send-to-remote-server
-                             (edn/read-string (slurp (str path log-name))))]
+               (let [error? (send-to-remote-server (read-log logs-path log-name))]
                  (if-not error?
-                   (do (clojure.java.io/delete-file (str path log-name))
+                   (do (io/delete-file (str logs-path log-name))
                        (println "Sent.")
                        (recur rest-logs))
+                   ; An error a this point is probably a network problem.
+                   ; De not recur (stop trying to send logs).
                    (do (println "Remote server can't be reached or refused the log.")
                        (println (str "Http status code : " (:status error?)))
                        (println (str "Body : " (:body error?)))))))
