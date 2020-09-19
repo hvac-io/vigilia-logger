@@ -60,7 +60,7 @@
   (u/with-test-configs
     (let [logs-path (scan/get-logs-path)
           test-logs [{:a 1} ; normal
-                     ""     ; emtpy
+                     ""     ; empty
                      'a]]   ; corrupted
       (doall
        (map-indexed (fn [idx data]
