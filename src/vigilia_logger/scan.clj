@@ -8,7 +8,7 @@
             [clojure.java.io :as io]
             [cognitect.transit :as transit]
             [com.climate.claypoole.lazy :as lazy]
-            [org.httpkit.client :as http]
+            [clj-http.client :as http]
             [trptcolin.versioneer.core :as version]
             [vigilia-logger.encoding :as encoding])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
@@ -31,11 +31,14 @@
   devices. (In the case of projects with multiple networks.)"
   []
   (str "logger-" (rand-string 6)))
-  
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 
-
+(defn request
+  "Same as `http/request`, but doesn't throw exception by default."
+  [opts]
+  (http/request (assoc opts :throw-exceptions false)))
 
 
 
@@ -129,75 +132,39 @@
 (defn http-error? [response]
   (or (:error response)
       (not (some #{(:status response)} [200 201 202 203
-                                   204 205 206 207
-                                   208 226]))))
-
-
-
-(defn auth-header [user pass]
-  (str "Basic " (String. ^bytes (b64/encode (.getBytes (str user ":" pass))))))
-
-
-(defmacro mapify
-  "Given some symbols, construct a map with the symbols as keys, and
-  the value of the symbols as the map values. For example:
- (Let [aa 12]
-     (mapify aa))
- => {:aa 12}"
-  [& symbols]
-  `(into {}
-         (filter second
-                 ~(into []
-                        (for [item symbols]
-                          [(keyword item) item])))))
-
-(defn proxy-configs
-  ([] (proxy-configs (get-logger-configs)))
-  ([configs]
-   (let [{:keys [proxy-host proxy-port proxy-user proxy-password] :as proxy}
-         (select-keys configs [:proxy-host :proxy-port :proxy-user :proxy-password])]
-     (when (and proxy-host proxy-port)
-       (merge (mapify proxy-host proxy-port)
-              (when (and proxy-user proxy-password)
-                {"Authorization" (auth-header proxy-user proxy-password)}))))))
+                                        204 205 206 207
+                                        208 226]))))
 
 (defn with-proxy-configs
   "Insert the configured proxy information into the request map."
-  ([request-map] (with-proxy-configs request-map (get-logger-configs)))
-  ([request-map configs]
-   (let [pc (proxy-configs configs)
-         host-map (select-keys pc [:proxy-host :proxy-port])
-         auth (select-keys pc ["Authorization"])]
-     (-> request-map
-         (merge host-map)
-         (update-in [:headers] merge auth)))))
+  [request-map]
+  (-> (get-logger-configs)
+      (select-keys [:proxy-host :proxy-port :proxy-ignore-hosts :proxy-user :proxy-pass])
+      (merge request-map)))
 
 (defn can-connect?
   "True if we can reach the specified api-root"
   [api-root]
-  (let [response @(http/request 
-                   (with-proxy-configs 
-                     {:url api-root
-                      :method :get
-                      :as :text}))]
-  (when-not 
-      (http-error? response)
-    true)))
-
-
+  (let [response (request 
+                  (with-proxy-configs 
+                    {:url    api-root
+                     :method :get
+                     :as     :text}))]
+    (when-not 
+        (http-error? response)
+      true)))
 
 (defn send-transit-request
   "Send a request with the necessary transit headers.
   Convert the data received back into edn."
   [url & [opts]]
   (let [req-config (with-proxy-configs
-                     (merge {:url url
-                                        ;:method :get ;; default method
-                                        ;:as :text
+                     (merge {:url     url
+                             :method  :get
                              :headers {"Content-Type" "application/transit+json" 
-                                       "Accept" "application/transit+json"}}
+                                       "Accept"       "application/transit+json"}}
                             (first opts)))
-        response @(http/request req-config)]
+        response (request req-config)]
     (if (and (not (or (http-error? response)
                       (empty? (:body response))))
              (re-find #"application/transit\+json"
@@ -276,7 +243,7 @@
                              crits (filter-device id crits)
                              :else :keep)))))))
     (catch Exception e nil)))
-                     
+
 
 (def remove-device-table
   "A map of the device ID, associated with its associated scan behavior.
@@ -289,18 +256,18 @@
 (defn remove-device?
   "Check if the device ID is marked to be removed. If it hasn't been
    tested yet, test it and record the result." [id]
-   (if-let [result (get @remove-device-table id)]
-     result
-     (if-let [criteria-coll (:criteria-coll (get-logger-configs))]
-       (get (swap! remove-device-table #(->> criteria-coll
-                                             (filter-device id)
-                                             (assoc % id))) id)
-       :keep)));;if no criteria-coll, automatically keep
+  (if-let [result (get @remove-device-table id)]
+    result
+    (if-let [criteria-coll (:criteria-coll (get-logger-configs))]
+      (get (swap! remove-device-table #(->> criteria-coll
+                                            (filter-device id)
+                                            (assoc % id))) id)
+      :keep)));;if no criteria-coll, automatically keep
 
 (defn reset-devices-to-remove-table! []
-   (reset! remove-device-table {})
-   (pmap remove-device? (rd/remote-devices)))
-   
+  (reset! remove-device-table {})
+  (pmap remove-device? (rd/remote-devices)))
+
 
 (defn devices-with-extended-info []
   ;; we catch errors because if the router for a given device is not
@@ -312,22 +279,22 @@
 (defn find-id-to-scan
   "Check all the different filtering options and return a list of
    device-id to scan." []
-   (let [{:keys [max-range min-range id-to-remove id-to-keep]} (get-logger-configs)
-         id-to-keep-fn (fn [x] (if id-to-keep (clojure.set/intersection (into #{} id-to-keep) x) x))
-         id-to-remove-fn (fn [x] (clojure.set/difference x (into #{} id-to-remove)))
-         remove-device (fn [x] (filter #(= :keep (remove-device? %)) x))
-         min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
-         max-fn (fn [x] (if max-range (filter #(< % max-range) x) x))]
-     ;; and now just keep the remote devices for which we have extended information
-     (-> (into #{} (devices-with-extended-info))
-         id-to-keep-fn
-         id-to-remove-fn
-         min-fn
-         max-fn
-         remove-device ;; <-- last so we can avoid querying remote
-                       ;; devices if we already know we don't want to
-                       ;; keep them.
-         )))
+  (let [{:keys [max-range min-range id-to-remove id-to-keep]} (get-logger-configs)
+        id-to-keep-fn (fn [x] (if id-to-keep (clojure.set/intersection (into #{} id-to-keep) x) x))
+        id-to-remove-fn (fn [x] (clojure.set/difference x (into #{} id-to-remove)))
+        remove-device (fn [x] (filter #(= :keep (remove-device? %)) x))
+        min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
+        max-fn (fn [x] (if max-range (filter #(< % max-range) x) x))]
+    ;; and now just keep the remote devices for which we have extended information
+    (-> (into #{} (devices-with-extended-info))
+        id-to-keep-fn
+        id-to-remove-fn
+        min-fn
+        max-fn
+        remove-device ;; <-- last so we can avoid querying remote
+        ;; devices if we already know we don't want to
+        ;; keep them.
+        )))
 
 
 
@@ -335,13 +302,13 @@
 ;;;;;;;;;;
 
 (defonce scanning-state
-  (atom {:ids-to-scan #{}
-         :ids-scanning #{}
-         :ids-scanned #{}
-         :start-time (time/now)
-         :end-time (time/now)
+  (atom {:ids-to-scan      #{}
+         :ids-scanning     #{}
+         :ids-scanned      #{}
+         :start-time       (time/now)
+         :end-time         (time/now)
          :scanning-time-ms 0
-         :completed-scans 0}))
+         :completed-scans  0}))
 
 (defn mark-as-scanning! [device-id]
   (swap! scanning-state update-in [:ids-scanning] conj device-id))
@@ -427,18 +394,18 @@
   "Send the logs to the remote server. NIL if successful. In case of
   error, return the response."
   [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
-  (let [response @(http/request 
-                   (with-proxy-configs
-                     {:url api-path
-                      :method :post
-                      :as :text
-                      :headers {"content-type" "application/transit+json"}
-                      :body (transit-encode
-                             {:logger-key logger-key
-                              :logger-id logger-id
-                              :logger-version logger-version
-                              :logs logs}
-                             :json)}))]
+  (let [response (request 
+                  (with-proxy-configs
+                    {:url     api-path
+                     :method  :post
+                     :as      :text
+                     :headers {"content-type" "application/transit+json"}
+                     :body    (transit-encode
+                               {:logger-key     logger-key
+                                :logger-id      logger-id
+                                :logger-version logger-version
+                                :logs           logs}
+                               :json)}))]
     (when (http-error? response)
       response)))
 
@@ -452,13 +419,13 @@
         project-logger-data (get-project-logger-data 
                              (get-api-root) project-id 
                              logger-key)]
-  ;; Check if server intend to accept our logs before sending them
+    ;; Check if server intend to accept our logs before sending them
     (if (:logging-allowed? project-logger-data)
-      (send-logs {:api-path (:href project-logger-data)
-                  :project-id project-id
-                  :logger-id (get-logger-id!)
+      (send-logs {:api-path       (:href project-logger-data)
+                  :project-id     project-id
+                  :logger-id      (get-logger-id!)
                   :logger-version logger-version
-                  :logger-key logger-key}
+                  :logger-key     logger-key}
                  data)
       :logging-not-allowed)))
 
@@ -495,19 +462,19 @@
    be reached (or simply refuses logs), keep them locally." []
   (let [logs (find-unsent-logs)
         logs-path (get-logs-path)]
-     (when (seq logs)
-       (println (format "Found %d local logs..." (count logs)))
-       (loop [[log-name & rest-logs] logs]
-         (if log-name
-           (do (println (str "sending " log-name "..."))
-               (let [error? (send-to-remote-server (read-log logs-path log-name))]
-                 (if-not error?
-                   (do (io/delete-file (str logs-path log-name))
-                       (println "Sent.")
-                       (recur rest-logs))
-                   ; An error a this point is probably a network problem.
-                   ; De not recur (stop trying to send logs).
-                   (do (println "Remote server can't be reached or refused the log.")
-                       (println (str "Http status code : " (:status error?)))
-                       (println (str "Body : " (:body error?)))))))
-           (println "No more local logs to send."))))))
+    (when (seq logs)
+      (println (format "Found %d local logs..." (count logs)))
+      (loop [[log-name & rest-logs] logs]
+        (if log-name
+          (do (println (str "sending " log-name "..."))
+              (let [error? (send-to-remote-server (read-log logs-path log-name))]
+                (if-not error?
+                  (do (io/delete-file (str logs-path log-name))
+                      (println "Sent.")
+                      (recur rest-logs))
+                  ; An error a this point is probably a network problem.
+                  ; De not recur (stop trying to send logs).
+                  (do (println "Remote server can't be reached or refused the log.")
+                      (println (str "Http status code : " (:status error?)))
+                      (println (str "Body : " (:body error?)))))))
+          (println "No more local logs to send."))))))

@@ -20,5 +20,6 @@
                                  :api-root "http://localhost:4347/get"
                                  :project-id 12
                                  :logger-key 12})
-     ~@body
-     (delete-recursively! scan/path)))
+     (try ~@body          
+          (finally
+            (delete-recursively! scan/path)))))
