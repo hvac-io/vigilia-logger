@@ -34,7 +34,7 @@
 
       (with-redefs [scan/send-to-remote-server (fn [_] :fail)]
         (scan/scan-and-send) ;; generate a log file
-        (is (= (count (scan/find-unsent-logs)))) ;; can we find it?
+        (is (= (count (scan/find-unsent-logs)) 1)) ;; can we find it?
         (is (some? (seq (.listFiles (io/file new-path))))) ;; is it really where we expect it?
 
         ;; cleanup
