@@ -1,9 +1,9 @@
 (ns vigilia-logger.test.scan
-  (:require [vigilia-logger.test.util :as u]
-            [vigilia-logger.scan :as scan]
-            [bacure.local-save :as local]
+  (:require [bacure.local-save :as local]
+            [clojure.java.io :as io]
             [clojure.test :refer :all]
-            [clojure.java.io :as io]))
+            [vigilia-logger.scan :as scan]
+            [vigilia-logger.test.util :as u]))
 
 (deftest logger-id
   (u/with-test-configs

@@ -2,13 +2,12 @@
   (:require [bacure.core :as bac]
             [bacure.local-save :as local]
             [bacure.remote-device :as rd]
+            [clj-http.client :as http]
             [clj-time.core :as time]
-            [clojure.data.codec.base64 :as b64]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [cognitect.transit :as transit]
             [com.climate.claypoole.lazy :as lazy]
-            [clj-http.client :as http]
             [trptcolin.versioneer.core :as version]
             [vigilia-logger.encoding :as encoding])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
@@ -35,13 +34,6 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn request
-  "Same as `http/request`, but doesn't throw exception by default."
-  [opts]
-  (http/request (assoc opts :throw-exceptions false)))
-
-
-
 (def path (str local/path "logger/"))
 
 
@@ -57,6 +49,21 @@
             local/safe-read
             remove-nil-in-maps)
        (catch Exception e)))
+
+(defn with-proxy-configs
+  "Insert the configured proxy information into the request map."
+  [request-map]
+  (-> (get-logger-configs)
+      (select-keys [:proxy-host :proxy-port :proxy-ignore-hosts :proxy-user :proxy-pass])
+      (merge request-map)))
+
+(defn request
+  "Similar to `http/request`, but doesn't throw exception by default and
+  includes proxy configs."
+  [opts]
+  (-> (merge {:throw-exceptions false} opts)
+      (with-proxy-configs)
+      (http/request)))
 
 
 (defn save-logger-configs!
@@ -135,21 +142,13 @@
                                         204 205 206 207
                                         208 226]))))
 
-(defn with-proxy-configs
-  "Insert the configured proxy information into the request map."
-  [request-map]
-  (-> (get-logger-configs)
-      (select-keys [:proxy-host :proxy-port :proxy-ignore-hosts :proxy-user :proxy-pass])
-      (merge request-map)))
-
 (defn can-connect?
   "True if we can reach the specified api-root"
   [api-root]
   (let [response (request 
-                  (with-proxy-configs 
-                    {:url    api-root
-                     :method :get
-                     :as     :text}))]
+                  {:url    api-root
+                   :method :get
+                   :as     :text})]
     (when-not 
         (http-error? response)
       true)))
@@ -158,12 +157,11 @@
   "Send a request with the necessary transit headers.
   Convert the data received back into edn."
   [url & [opts]]
-  (let [req-config (with-proxy-configs
-                     (merge {:url     url
-                             :method  :get
-                             :headers {"Content-Type" "application/transit+json" 
-                                       "Accept"       "application/transit+json"}}
-                            (first opts)))
+  (let [req-config (merge {:url     url
+                           :method  :get
+                           :headers {"Content-Type" "application/transit+json"
+                                     "Accept"       "application/transit+json"}}
+                          (first opts))
         response (request req-config)]
     (if (and (not (or (http-error? response)
                       (empty? (:body response))))
@@ -395,17 +393,16 @@
   error, return the response."
   [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
   (let [response (request 
-                  (with-proxy-configs
-                    {:url     api-path
-                     :method  :post
-                     :as      :text
-                     :headers {"content-type" "application/transit+json"}
-                     :body    (transit-encode
-                               {:logger-key     logger-key
-                                :logger-id      logger-id
-                                :logger-version logger-version
-                                :logs           logs}
-                               :json)}))]
+                  {:url     api-path
+                   :method  :post
+                   :as      :text
+                   :headers {"content-type" "application/transit+json"}
+                   :body    (transit-encode
+                             {:logger-key     logger-key
+                              :logger-id      logger-id
+                              :logger-version logger-version
+                              :logs           logs}
+                             :json)})]
     (when (http-error? response)
       response)))
 
