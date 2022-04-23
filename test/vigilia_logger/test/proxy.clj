@@ -71,7 +71,6 @@
 (defn wrap-proxy-auth
   [handler]
   (fn [req]
-    (def ppp req)
     (if-some [p-auth (get-in req [:headers "proxy-authorization"])] ;; hack to reuse existing middleware function
       (if (-> (assoc-in req [:headers "authorization"] p-auth)
               (ring.middleware.basic-authentication/basic-authentication-request authenticated?)
