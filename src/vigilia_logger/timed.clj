@@ -40,7 +40,19 @@
    (rd/discover-network)
    (Thread/sleep 5000) ;; wait 5s
    (rd/all-extended-information) ;; recheck for extented information
-   (scan/reset-devices-to-remove-table!))
+  (scan/reset-devices-to-remove-table!))
+
+(defn timeout [timeout-ms callback]
+  (let [fut (future (callback))
+        ret (deref fut timeout-ms ::timed-out)]
+    (when (= ret ::timed-out)
+      (future-cancel fut)
+      (throw (ex-info (str "Timeout after " timeout-ms " ms") {})))
+    ret))
+
+(defmacro with-timeout
+  [timeout-ms & body]
+  `(timeout ~timeout-ms (fn [] ~@body)))
 
 (def scan-active? (atom nil))
 
@@ -55,7 +67,7 @@
   ;refresh --------> Restart the local device each week. (This is
                      done in order to discard any `visitor devices'
                      that are no longer on the network, and to clean
-                     some 'duplicates' that sometimes occur in the 
+                     some 'duplicates' that sometimes occur in the
                      underlying Bacnet4j library.)
 
   At start: we reset the local-device, discover the network, wait a
@@ -66,20 +78,20 @@
     (println "Vigilia logger started")
     (println "----------------------")
     (future ;; in another thread
-      (init!)      
+      (init!)
       (when-not (= @logging-state "Stopped") ;; if we didn't stop the logging meanwhile
         (reset! logging-state "Logging")
         (let [time-interval (min-ms (or (:time-interval (scan/get-logger-configs)) 10)) ;; default 10 minutes
               reset-interval (min-ms (* 60 24 7)) ;; 7 days
               after-scan-fn (atom nil)
-              logger-job-fn 
+              logger-job-fn
               (fn [] ;; will start logging and return the pool job
                 (ot/every time-interval
-                          (fn [] 
+                          (fn []
                             (if @scan-active?
                               ;; Skip this scan if the previous one isn't done yet
                               (println "Previous scan incomplete... skipping this round.")
-                              
+
                               ;; we need to catch exception because
                               ;; we can't interrupt sleeping
                               ;; processes. (This means we might not
@@ -87,19 +99,23 @@
                               ;; BACnet device).
                               (do
                                 (try
-                                  (println (str "Starting network scan at "
-                                                (-> (l/local-now)
-                                                    (l/format-local-time :date-hour-minute-second))))
-                                  (reset! scan-active? true) ;; mark the scan as active
-                                  (services/send-who-is-router-to-network nil)
-                                  (rd/discover-network) ;; if new devices (or just slow)
-                                  (scan/scan-and-send)
-                                  (println
-                                   (format "Scan completed in %.2fs"
-                                           (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
-                                  (scan/send-local-logs)
+                                  ;; If a scan takes longer than 2 hours, we have a problem...
+                                  (with-timeout (* 1000 60 60 2)
+                                    (println (str "Starting network scan at "
+                                                  (-> (l/local-now)
+                                                      (l/format-local-time :date-hour-minute-second))))
+                                    (reset! scan-active? true) ;; mark the scan as active
+                                    (services/send-who-is-router-to-network nil)
+                                    (rd/discover-network) ;; if new devices (or just slow)
+                                    (scan/scan-and-send)
+                                    (println
+                                     (format "Scan completed in %.2fs"
+                                             (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
+                                    (scan/send-local-logs))
+
                                   (catch Exception e
                                     (println (str "Exception: "(.getMessage e)))))
+
                                 (when-let [f @after-scan-fn]
                                   (f)
                                   (reset! after-scan-fn nil))
@@ -111,7 +127,7 @@
            :refresh  (ot/every reset-interval
                                #(reset! after-scan-fn
                                         (fn []
-                                          (try 
+                                          (try
                                             (println "Restarting local BACnet device")
                                             (init!)
                                             (catch Exception e
@@ -125,4 +141,3 @@
   Do nothing otherwise and return nil." []
    (when (:project-id (scan/get-logger-configs))
      (do (start-logging) true)))
-  
