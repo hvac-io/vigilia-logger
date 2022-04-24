@@ -6,6 +6,7 @@
             [clj-time.core :as time]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.tools.logging :as log]
             [cognitect.transit :as transit]
             [com.climate.claypoole.lazy :as lazy]
             [trptcolin.versioneer.core :as version]
@@ -190,7 +191,7 @@
               (send-transit-request {:query-params {:logger-key key}}))]
       (if-not (http-error? response)
         (:body response)
-        (print response)))))
+        (log/warn (str response))))))
 
 
 (defn credentials-valid?
@@ -440,7 +441,6 @@
     ;; try to send to server
     (when (send-to-remote-server data) ;; nil on success
       ;; if it doesn't work, save data locally.
-      ;(print (send-to-remote-server data))
       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
         (spit-file-fn data)))))
 
@@ -460,18 +460,16 @@
   (let [logs (find-unsent-logs)
         logs-path (get-logs-path)]
     (when (seq logs)
-      (println (format "Found %d local logs..." (count logs)))
+      (log/info (format "Found %d local logs..." (count logs)))
       (loop [[log-name & rest-logs] logs]
         (if log-name
-          (do (println (str "sending " log-name "..."))
+          (do (log/info (str "sending " log-name "..."))
               (let [error? (send-to-remote-server (read-log logs-path log-name))]
                 (if-not error?
                   (do (io/delete-file (str logs-path log-name))
-                      (println "Sent.")
+                      (log/info "Sent.")
                       (recur rest-logs))
                   ; An error a this point is probably a network problem.
                   ; De not recur (stop trying to send logs).
-                  (do (println "Remote server can't be reached or refused the log.")
-                      (println (str "Http status code : " (:status error?)))
-                      (println (str "Body : " (:body error?)))))))
-          (println "No more local logs to send."))))))
+                  (log/warn "Remote server can't be reached or refused the log."))))
+          (log/info "No more local logs to send."))))))

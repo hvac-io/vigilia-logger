@@ -5,6 +5,7 @@
             [bacure.remote-device :as rd]
             [clj-time.core :as time]
             [clojure.string :as s]
+            [clojure.tools.logging :as log]
             [clojure.walk :as w]))
 
 (defn timestamp []
@@ -154,12 +155,12 @@
 
                                  (catch Exception e
                                    (let [err-str (last (re-find #"\.([^.]*$)" (str e)))]
-                                     (println (str "Scan error for object " obj-id " on device "device-id ":\n "err-str)))
+                                     (log/error (str "Scan error for object " obj-id " on device "device-id ":\n "err-str)))
 
                                    ;; loop exit
                                    (swap! consecutive-errors-qty inc)
                                    (when (>= @consecutive-errors-qty max-errors)
-                                     (println (str max-errors" consecutive read errors for device "device-id ", skipping remaining objects."))
+                                     (log/error (str max-errors" consecutive read errors for device "device-id ", skipping remaining objects."))
                                      (reset! continue-a false))))]
                      (if props
                        (assoc-in result [o-type o-inst] props)
@@ -208,9 +209,9 @@
   ([device-id device-target-objects] (scan-device device-id device-target-objects nil))
   ([device-id device-target-objects read-object-delay]
    (try
-     (println (str "Scanning device "device-id))
+     (log/info (str "Scanning device "device-id))
      (if-not (rd/is-alive? device-id)
-       (println (str "Device "device-id " is unreachable."))
+       (log/warn (str "Device "device-id " is unreachable."))
        (let [start-time (timestamp)
              ;; if we don't have device-target-objects, just use the remote-objects list
              object-identifiers (-> (or device-target-objects
@@ -226,5 +227,5 @@
              :objects       properties
              :scan-duration (- (timestamp) start-time)}})))
      (catch Exception e
-       (println (str "Error trying to scan device "device-id ": "
-                     e))))))
+       (log/error (str "Error trying to scan device "device-id ": "
+                       e))))))

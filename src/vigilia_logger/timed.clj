@@ -3,6 +3,7 @@
             [bacure.remote-device :as rd]
             [bacure.services :as services]
             [clj-time.local :as l]
+            [clojure.tools.logging :as log]
             [overtone.at-at :as ot]
             [vigilia-logger.scan :as scan]))
 
@@ -16,9 +17,9 @@
 (defn stop-logging []
   (ot/stop-and-reset-pool! pool :strategy :kill)
   (reset! logging-state "Stopped")
-  (println "----------------------")
-  (println "Vigilia logger stopped")
-  (println "----------------------"))
+  (log/info "----------------------")
+  (log/info "Vigilia logger stopped")
+  (log/info "----------------------"))
 
 (defn restart-logging []
   (stop-logging)
@@ -74,9 +75,9 @@
   while and then start to log the network."[]
   (when-not (is-logging?) ;;don't log twice simultaneously
     (reset! logging-state "Mapping network")
-    (println "----------------------")
-    (println "Vigilia logger started")
-    (println "----------------------")
+    (log/info "----------------------")
+    (log/info "Vigilia logger started")
+    (log/info "----------------------")
     (future ;; in another thread
       (init!)
       (when-not (= @logging-state "Stopped") ;; if we didn't stop the logging meanwhile
@@ -90,7 +91,7 @@
                           (fn []
                             (if @scan-active?
                               ;; Skip this scan if the previous one isn't done yet
-                              (println "Previous scan incomplete... skipping this round.")
+                              (log/warn "Previous scan incomplete... skipping this round.")
 
                               ;; we need to catch exception because
                               ;; we can't interrupt sleeping
@@ -101,20 +102,20 @@
                                 (try
                                   ;; If a scan takes longer than 2 hours, we have a problem...
                                   (with-timeout (* 1000 60 60 2)
-                                    (println (str "Starting network scan at "
-                                                  (-> (l/local-now)
-                                                      (l/format-local-time :date-hour-minute-second))))
+                                    (log/info (str "Starting network scan at "
+                                                   (-> (l/local-now)
+                                                       (l/format-local-time :date-hour-minute-second))))
                                     (reset! scan-active? true) ;; mark the scan as active
                                     (services/send-who-is-router-to-network nil)
                                     (rd/discover-network) ;; if new devices (or just slow)
                                     (scan/scan-and-send)
-                                    (println
+                                    (log/info
                                      (format "Scan completed in %.2fs"
                                              (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
                                     (scan/send-local-logs))
 
                                   (catch Exception e
-                                    (println (str "Exception: "(.getMessage e)))))
+                                    (log/error (str "Network scan exception: "(.getMessage e)))))
 
                                 (when-let [f @after-scan-fn]
                                   (f)
@@ -128,10 +129,10 @@
                                #(reset! after-scan-fn
                                         (fn []
                                           (try
-                                            (println "Restarting local BACnet device")
+                                            (log/info "Restarting local BACnet device")
                                             (init!)
                                             (catch Exception e
-                                              (println (str "Exception: "(.getMessage e)))))))
+                                              (log/error (str "Exception: "(.getMessage e)))))))
                                pool
                                :initial-delay reset-interval
                                :desc "Logging reset every week")})))))

@@ -17,6 +17,9 @@
                  ;; recurring jobs
                  [overtone/at-at "1.2.0"]
 
+                 ;; logging
+                 [org.clojure/tools.logging "1.2.4"]
+
                  ;; Threadpool tools (pmap)
                  [com.climate/claypoole "1.1.4"]]
 
@@ -30,5 +33,7 @@
                [ring-basic-authentication "1.1.0"]
                [compojure "1.6.2"]
                [ring/ring-jetty-adapter "1.8.1"]
+
                ;; error logs
-               [org.slf4j/slf4j-nop "1.7.30"]]}})
+               [com.taoensso/timbre "5.1.0"]
+               [com.fzakaria/slf4j-timbre "0.3.20"]]}})
