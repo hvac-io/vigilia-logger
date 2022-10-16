@@ -268,12 +268,13 @@
   (pmap remove-device? (rd/remote-devices)))
 
 
-(defn devices-with-extended-info []
-  ;; we catch errors because if the router for a given device is not
-  ;; found, it will throw an exception.
-  (filter (fn [id] (try (rd/extended-information id)
-                        (catch Exception e)))
-          (rd/remote-devices)))
+(defn has-extended-info?
+  [id]
+  (try
+    ;; We catch errors because if the router for a given device is not
+    ;; found, it will throw an exception.
+    (rd/extended-information id)
+    (catch Exception e)))
 
 (defn find-id-to-scan
   "Check all the different filtering options and return a list of
@@ -285,15 +286,16 @@
         min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
         max-fn (fn [x] (if max-range (filter #(< % max-range) x) x))]
     ;; and now just keep the remote devices for which we have extended information
-    (-> (into #{} (devices-with-extended-info))
-        id-to-keep-fn
-        id-to-remove-fn
-        min-fn
-        max-fn
-        remove-device ;; <-- last so we can avoid querying remote
-        ;; devices if we already know we don't want to
-        ;; keep them.
-        )))
+    (->> (rd/remote-devices)
+         ;; Avoid fetching extended-info by discarding IDs first
+         id-to-keep-fn
+         id-to-remove-fn
+         min-fn
+         max-fn
+         ;; Now check extended info
+         (filter has-extended-info?)
+         remove-device ;; <-- last to avoid querying remote devices we won't keep
+         )))
 
 
 
