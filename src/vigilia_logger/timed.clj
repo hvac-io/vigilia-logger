@@ -37,11 +37,13 @@
 
 (defn init!
   "Reset the local device, make a list of remote devices and find
-   those that should be excluded based on their properties."[]
-   (ld/reset-local-device!)
-   (rd/discover-network)
-   (Thread/sleep 5000) ;; wait 5s
-   (rd/all-extended-information) ;; recheck for extented information
+   those that should be excluded based on their properties."
+  []
+  (ld/reset-local-device!)
+  (rd/find-remote-devices)
+  (Thread/sleep 5000) ;; wait 5s
+  (log/info "Fetching extended information for " (count (rd/remote-devices)) " devices")
+  (rd/all-extended-information) ;; recheck for extented information
   (scan/reset-devices-to-remove-table!))
 
 (def scan-active? (atom nil))
