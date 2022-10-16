@@ -91,6 +91,14 @@
                               ;; BACnet device).
                               (do
                                 (try
+                                  ;; Send local logs immediately in a parallel thread
+                                  (future
+                                    (try
+                                      (tools/with-timeout time-interval "Sending local logs"
+                                        (scan/send-local-logs))
+                                      (catch Exception e
+                                        (log/error (.getMessage e)))))
+
                                   ;; If a scan takes longer than 2 hours, we have a problem...
                                   (tools/with-timeout (* 1000 60 60 2) ""
                                     (log/info (str "Starting network scan at "
@@ -102,8 +110,7 @@
                                     (scan/scan-and-send)
                                     (log/info
                                      (format "Scan completed in %.2fs"
-                                             (some-> @scan/scanning-state :scanning-time-ms (/  1000.0))))
-                                    (scan/send-local-logs))
+                                             (some-> @scan/scanning-state :scanning-time-ms (/  1000.0)))))
 
                                   (catch Exception e
                                     (log/error (str "Network scan exception: "(.getMessage e)))))
