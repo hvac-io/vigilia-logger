@@ -5,7 +5,8 @@
             [clj-time.local :as l]
             [clojure.tools.logging :as log]
             [overtone.at-at :as ot]
-            [vigilia-logger.scan :as scan]))
+            [vigilia-logger.scan :as scan]
+            [vigilia-logger.tools :as tools]))
 
 (def pool (ot/mk-pool))
 
@@ -42,18 +43,6 @@
    (Thread/sleep 5000) ;; wait 5s
    (rd/all-extended-information) ;; recheck for extented information
   (scan/reset-devices-to-remove-table!))
-
-(defn timeout [timeout-ms callback]
-  (let [fut (future (callback))
-        ret (deref fut timeout-ms ::timed-out)]
-    (when (= ret ::timed-out)
-      (future-cancel fut)
-      (throw (ex-info (str "Timeout after " timeout-ms " ms") {})))
-    ret))
-
-(defmacro with-timeout
-  [timeout-ms & body]
-  `(timeout ~timeout-ms (fn [] ~@body)))
 
 (def scan-active? (atom nil))
 
@@ -101,7 +90,7 @@
                               (do
                                 (try
                                   ;; If a scan takes longer than 2 hours, we have a problem...
-                                  (with-timeout (* 1000 60 60 2)
+                                  (tools/with-timeout (* 1000 60 60 2) ""
                                     (log/info (str "Starting network scan at "
                                                    (-> (l/local-now)
                                                        (l/format-local-time :date-hour-minute-second))))
