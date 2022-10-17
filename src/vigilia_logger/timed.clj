@@ -106,7 +106,7 @@
                                                        (l/format-local-time :date-hour-minute-second))))
                                     (reset! scan-active? true) ;; mark the scan as active
                                     (services/send-who-is-router-to-network nil)
-                                    (rd/discover-network) ;; if new devices (or just slow)
+                                    (rd/find-remote-devices) ;; In case of new devices
                                     (scan/scan-and-send)
                                     (log/info
                                      (format "Scan completed in %.2fs"
