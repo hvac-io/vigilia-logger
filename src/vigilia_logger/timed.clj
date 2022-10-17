@@ -18,9 +18,7 @@
 (defn stop-logging []
   (ot/stop-and-reset-pool! pool :strategy :kill)
   (reset! logging-state "Stopped")
-  (log/info "----------------------")
-  (log/info "Vigilia logger stopped")
-  (log/info "----------------------"))
+  (log/info "Vigilia logger stopped"))
 
 (defn restart-logging []
   (stop-logging)
@@ -42,7 +40,7 @@
   (ld/reset-local-device!)
   (rd/find-remote-devices)
   (Thread/sleep 5000) ;; wait 5s
-  (log/info "Fetching extended information for " (count (rd/remote-devices)) " devices")
+  (log/info (str "Fetching extended information for " (count (rd/remote-devices)) " devices"))
   (rd/all-extended-information) ;; recheck for extented information
   (scan/reset-devices-to-remove-table!))
 
@@ -66,9 +64,7 @@
   while and then start to log the network."[]
   (when-not (is-logging?) ;;don't log twice simultaneously
     (reset! logging-state "Mapping network")
-    (log/info "----------------------")
     (log/info "Vigilia logger started")
-    (log/info "----------------------")
     (future ;; in another thread
       (init!)
       (when-not (= @logging-state "Stopped") ;; if we didn't stop the logging meanwhile
