@@ -146,11 +146,11 @@
 (defn can-connect?
   "True if we can reach the specified api-root"
   [api-root]
-  (let [response (request 
+  (let [response (request
                   {:url    api-root
                    :method :get
                    :as     :text})]
-    (when-not 
+    (when-not
         (http-error? response)
       true)))
 
@@ -186,9 +186,7 @@
   http error (most probably 403: forbidden) or bad project."
   [api-root-path project-id key]
   (when-let [api-path (get-logger-api-path api-root-path project-id)]
-    (let [response
-          (-> api-path
-              (send-transit-request {:query-params {:logger-key key}}))]
+    (let [response (send-transit-request api-path {:query-params {:logger-key key}})]
       (if-not (http-error? response)
         (:body response)
         (log/warn (str response))))))
@@ -200,7 +198,7 @@
   ([] (let [configs (get-logger-configs)]
         (credentials-valid? (:project-id configs) (:logger-key configs))))
   ([project-id logger-key]
-   (when (get-project-logger-data 
+   (when (get-project-logger-data
           (get-api-root) project-id logger-key)
      true)))
 
@@ -316,12 +314,12 @@
 
 (defn mark-as-scanned! [device-id]
   (let [ss @scanning-state]
-    (reset! scanning-state 
+    (reset! scanning-state
             (-> (update-in ss [:ids-scanning] disj device-id)
                 (update-in [:ids-scanned] conj device-id)))))
 
 (defn mark-start-of-scan! [ids-to-scan]
-  (swap! scanning-state 
+  (swap! scanning-state
          assoc
          :scanning? true
          :start-time (time/now)
@@ -332,7 +330,7 @@
         end-time (time/now)
         start-time (or (:start-time ss) (time/now))
         completed (inc (:completed-scans ss))]
-    (swap! scanning-state 
+    (swap! scanning-state
            assoc
            :completed-scans completed
            :scanning? nil
@@ -370,7 +368,7 @@
                         (reorder-ids))
         scan-fn (fn [device-id]
                   (mark-as-scanning! device-id)
-                  (let [scan-data (encoding/scan-device device-id 
+                  (let [scan-data (encoding/scan-device device-id
                                                         (get target-objects device-id)
                                                         read-object-delay)]
                     (mark-as-scanned! device-id)
@@ -395,7 +393,7 @@
   "Send the logs to the remote server. NIL if successful. In case of
   error, return the response."
   [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
-  (let [response (request 
+  (let [response (request
                   {:url     api-path
                    :method  :post
                    :as      :text
@@ -416,8 +414,8 @@
   (let [configs (get-logger-configs)
         {:keys [project-id logger-key
                 logger-id]} configs
-        project-logger-data (get-project-logger-data 
-                             (get-api-root) project-id 
+        project-logger-data (get-project-logger-data
+                             (get-api-root) project-id
                              logger-key)]
     ;; Check if server intend to accept our logs before sending them
     (if (:logging-allowed? project-logger-data)
