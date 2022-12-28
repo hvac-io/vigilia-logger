@@ -16,16 +16,6 @@
 
 ;;; Remote server communication
 
-(def default-api-root "https://vigilia.hvac.io/api/v1")
-
-(defn get-api-root
-  "Get the api root path. If nothing is found, default to
-  https://vigilia.hvac.io/api/v1."
-  []
-  (-> (configs/fetch)
-      (:api-root)
-      (or default-api-root)))
-
 (defn get-logger-api-path
   "Given the root API path and a project-id, query the API to find out
   what is the logger path and return it."
@@ -264,7 +254,7 @@
         {:keys [project-id logger-key
                 logger-id]} configs
         project-logger-data (get-project-logger-data
-                             (get-api-root) project-id
+                             (configs/api-root) project-id
                              logger-key)]
     ;; Check if server intend to accept our logs before sending them
     (if (:logging-allowed? project-logger-data)

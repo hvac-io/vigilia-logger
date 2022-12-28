@@ -68,3 +68,13 @@
   (let [configs (fetch)]
     (or (:logger-id configs)
         (new-logger-id! configs))))
+
+
+(def default-api-root "https://vigilia.hvac.io/api/v1")
+
+(defn api-root
+  "Get the api root path. If nothing is found, default to
+  https://vigilia.hvac.io/api/v1."
+  []
+  (or (:api-root (fetch))
+      default-api-root))

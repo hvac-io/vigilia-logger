@@ -29,3 +29,15 @@
       (is id)
       (is (= id (:logger-id (configs/fetch))))
       (is (= id (configs/get-logger-id!))))))
+
+(deftest api-root
+  (u/with-test-configs
+    ;; init config without any api-root
+    (configs/save! {})
+
+    (is (= (configs/api-root) configs/default-api-root)
+        "Default api root is used")
+
+    (configs/save! {:api-root "some-root"})
+    (is (= (configs/api-root) "some-root")
+        "Saved api root is used")))
