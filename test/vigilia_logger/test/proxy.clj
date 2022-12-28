@@ -1,11 +1,14 @@
 (ns vigilia-logger.test.proxy
-  (:require [clj-http.client :as http]
+  (:require [clj-http.client :as http-client]
             [clojure.test :refer :all]
             [compojure.core :refer [defroutes GET]]
             [org.httpkit.server :refer [run-server]]
             [ring.adapter.jetty :refer [run-jetty]]
-            ring.middleware.basic-authentication
+            [ring.middleware.basic-authentication]
             [ring.middleware.defaults :as defaults]
+            [taoensso.timbre :as timbre]
+            [vigilia-logger.configs :as configs]
+            [vigilia-logger.http :as http]
             [vigilia-logger.scan :as scan]
             [vigilia-logger.test.util :as u]))
 
@@ -31,13 +34,13 @@
             host             (server-mapping request-key)
             stripped-headers (dissoc (:headers request) "content-length")]
         (if host
-          (select-keys (http/request {:url              (build-url host (:uri request) (:query-string request))
-                                      :method           (:request-method request)
-                                      :body             (:body request)
-                                      :headers          stripped-headers
-                                      :throw-exceptions false
-                                      :as               :stream
-                                      :insecure?        insecure})
+          (select-keys (http-client/request {:url              (build-url host (:uri request) (:query-string request))
+                                             :method           (:request-method request)
+                                             :body             (:body request)
+                                             :headers          stripped-headers
+                                             :throw-exceptions false
+                                             :as               :stream
+                                             :insecure?        insecure})
                        [:status :headers :body])
           (handler request))))))
 
@@ -91,32 +94,34 @@
 
 (defn fixtures
   [f]
-  (let [server            (run-server
-                           (defaults/wrap-defaults test-routes defaults/site-defaults)
-                           {:port 4347})
-        ssl-server        (run-jetty
-                           (defaults/wrap-defaults test-routes defaults/site-defaults)
-                           {:port         14347    :join?    false :ssl-port 9898 :ssl? true :http? false
-                            :key-password "123456" :keystore "test/ssl_keystore"})
-        ssl-proxy-server  (run-jetty
-                           proxy-handler
-                           {:port         14348    :join?    false :ssl-port 9899 :ssl? true :http? false
-                            :key-password "123456" :keystore "test/ssl_keystore"})
-        proxy-server      (run-server
-                           proxy-handler
-                           {:port 4348 :join? false :ssl? false})
-        auth-proxy-server (run-server
-                           (-> proxy-handler
-                               (wrap-proxy-auth))
-                           {:port 4349})]
-    (try (f)
-         ; Close all servers
-         (finally
-           (server)
-           (proxy-server)
-           (auth-proxy-server)
-           (.stop ssl-server)
-           (.stop ssl-proxy-server)))))
+  (timbre/with-level :fatal
+    ;; Don't print out the logs
+    (let [server            (run-server
+                             (defaults/wrap-defaults test-routes defaults/site-defaults)
+                             {:port 4347})
+          ssl-server        (run-jetty
+                             (defaults/wrap-defaults test-routes defaults/site-defaults)
+                             {:port         14347    :join?    false :ssl-port 9898 :ssl? true :http? false
+                              :key-password "123456" :keystore "test/ssl_keystore"})
+          ssl-proxy-server  (run-jetty
+                             proxy-handler
+                             {:port         14348    :join?    false :ssl-port 9899 :ssl? true :http? false
+                              :key-password "123456" :keystore "test/ssl_keystore"})
+          proxy-server      (run-server
+                             proxy-handler
+                             {:port 4348 :join? false :ssl? false})
+          auth-proxy-server (run-server
+                             (-> proxy-handler
+                                 (wrap-proxy-auth))
+                             {:port 4349})]
+      (try (f)
+           ; Close all servers
+           (finally
+             (server)
+             (proxy-server)
+             (auth-proxy-server)
+             (.stop ssl-server)
+             (.stop ssl-proxy-server))))))
 
 (use-fixtures :once fixtures)
 
@@ -126,11 +131,11 @@
 
 (deftest test-control
   (testing "no proxy, for sanity checking"
-    (let [resp (http/get "http://127.0.0.1:4347/get")]
+    (let [resp (http-client/get "http://127.0.0.1:4347/get")]
       (is (= 200 (:status resp)))
       (is (= "hello world" (:body resp)))))
   (testing "no proxy + ssl, for sanity checking"
-    (let [resp (http/get "https://127.0.0.1:9898/get" {:insecure? true})]
+    (let [resp (http-client/get "https://127.0.0.1:9898/get" {:insecure? true})]
       (is (= 200 (:status resp)))
       (is (= "hello world" (:body resp))))))
 
@@ -142,17 +147,17 @@
   (testing "test call nonexistent proxy and fail"
     (is (thrown-with-msg? java.net.ConnectException
                           #"Connection refused"
-                          (http/get "http://127.0.0.1:4347/get"
-                                    {:proxy-host         "127.0.0.1"
-                                     :proxy-port         4346
-                                     :proxy-ignore-hosts #{}})))))
+                          (http-client/get "http://127.0.0.1:4347/get"
+                                           {:proxy-host         "127.0.0.1"
+                                            :proxy-port         4346
+                                            :proxy-ignore-hosts #{}})))))
 
 (deftest http-to-http-proxy
   (testing "test call proxy successfully"
-    (let [{:keys [status body]} (http/get "http://127.0.0.1:4347/get"
-                                          {:proxy-host         "127.0.0.1"
-                                           :proxy-port         4348
-                                           :proxy-ignore-hosts #{}})]
+    (let [{:keys [status body]} (http-client/get "http://127.0.0.1:4347/get"
+                                                 {:proxy-host         "127.0.0.1"
+                                                  :proxy-port         4348
+                                                  :proxy-ignore-hosts #{}})]
       (is (= 200 status))
       (is (= "hello world" body)))))
 
@@ -161,54 +166,54 @@
   (u/with-test-configs
     (testing "Various configs operations"
       (let [test-config-map {:time-interval 2}]
-        (scan/save-logger-configs! test-config-map)
-        (is (= test-config-map (scan/get-logger-configs)))))
+        (configs/save! test-config-map)
+        (is (= test-config-map (configs/fetch)))))
     (testing "Proxy config"
       (let [m         {:proxy-host "127.0.0.1" :proxy-port 3030}
             m2        (merge m proxy-auth-data)
             m2-result (merge m m2)]
-        (is (= m (scan/with-proxy-configs m)))
-        (is (= m2-result (scan/with-proxy-configs m2)))))))
+        (is (= m (http/with-proxy-configs m)))
+        (is (= m2-result (http/with-proxy-configs m2)))))))
 
 (deftest config-proxy-connection
   (testing "Simple proxy"
-    (let [resp (http/get "http://localhost:4347/get"
-                         (scan/with-proxy-configs
-                           (merge proxy-auth-data
-                                  {:proxy-host         "127.0.0.1"
-                                   :proxy-port         4348
-                                   :proxy-ignore-hosts #{}})))]
+    (let [resp (http-client/get "http://localhost:4347/get"
+                                (http/with-proxy-configs
+                                  (merge proxy-auth-data
+                                         {:proxy-host         "127.0.0.1"
+                                          :proxy-port         4348
+                                          :proxy-ignore-hosts #{}})))]
       (is (= 200 (:status resp)))
       (is (= "hello world" (:body resp)))))
   (testing "proxy with authentication"
-    (let [resp (http/get "http://localhost:4347/get"
-                         (scan/with-proxy-configs
-                           (merge proxy-auth-data
-                                  {:proxy-host         "127.0.0.1"
-                                   :proxy-port         4349
-                                   :proxy-ignore-hosts #{}})))]    
+    (let [resp (http-client/get "http://localhost:4347/get"
+                                (http/with-proxy-configs
+                                  (merge proxy-auth-data
+                                         {:proxy-host         "127.0.0.1"
+                                          :proxy-port         4349
+                                          :proxy-ignore-hosts #{}})))]
       (is (= 200 (:status resp)))
       (is (= "hello world" (:body resp)))))
   (u/with-test-configs
-    (scan/save-logger-configs! (merge proxy-auth-data
+    (configs/save! (merge proxy-auth-data
                                       {:proxy-host         "127.0.0.1"
                                        :proxy-port         4349
                                        :proxy-ignore-hosts #{}}))
-    (testing "proxy with authentication and saved configs"  
-      (let [resp (http/get "http://localhost:4347/get"
-                           (scan/with-proxy-configs {}))]
+    (testing "proxy with authentication and saved configs"
+      (let [resp (http-client/get "http://localhost:4347/get"
+                                  (http/with-proxy-configs {}))]
         (is (= 200 (:status resp)))
         (is (= "hello world" (:body resp)))))
     (testing "Various request functions"
-      (is (scan/can-connect? "http://localhost:4347/get"))
-      (is (scan/send-transit-request "http://localhost:4347/get"))
+      (is (http/can-connect? "http://localhost:4347/get"))
+      (is (http/request {:url "http://localhost:4347/get"}))
       ;; now we enter the wrong proxy password and test if we fail to connect
-      (scan/save-logger-configs! (merge {:proxy-user "me" :proxy-pass "wrong"}
-                                        {:proxy-host         "127.0.0.1"
-                                         :proxy-port         4349
-                                         :proxy-ignore-hosts #{}}))
-      (is (not (scan/can-connect? "http://localhost:4347/get")))
-      (is (= "access denied" (:body (scan/send-transit-request "http://localhost:4347/get")))))))
+      (configs/save! (merge {:proxy-user "me" :proxy-pass "wrong"}
+                            {:proxy-host         "127.0.0.1"
+                             :proxy-port         4349
+                             :proxy-ignore-hosts #{}}))
+      (is (not (http/can-connect? "http://localhost:4347/get")))
+      (is (= "access denied" (:body (http/request {:url "http://localhost:4347/get"})))))))
 
 
 (comment
@@ -216,9 +221,9 @@
    (fn []
      (u/with-test-configs
        ;; now we enter the wrong proxy password and test if we fail to connect
-       (scan/save-logger-configs! (merge {:proxy-user "me" :proxy-pass "wrong"}
-                                         {:proxy-host         "127.0.0.1"
-                                          :proxy-port         4349
-                                          :proxy-ignore-hosts #{}}))
-       (scan/can-connect? "http://localhost:4347/get")
-       (scan/send-transit-request "http://localhost:4347/get")))))
+       (configs/save! (merge {:proxy-user "me" :proxy-pass "wrong"}
+                             {:proxy-host         "127.0.0.1"
+                              :proxy-port         4349
+                              :proxy-ignore-hosts #{}}))
+       (http/can-connect? "http://localhost:4347/get")
+       (http/request {:url "http://localhost:4347/get"})))))
