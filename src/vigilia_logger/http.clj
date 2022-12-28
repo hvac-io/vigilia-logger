@@ -70,8 +70,8 @@
   [url]
   (try
     (not (error? (request {:url    url
-                                :method :get
-                                :as     :text})))
+                           :method :get
+                           :as     :text})))
     (catch java.net.ConnectException _)))
 
 (defn- fetch-logger-api-path
@@ -106,3 +106,16 @@
      true
      false)))
 
+(defn send-logs
+  "Send the logs to the remote server. NIL if successful. In case of
+  error, return the response."
+  [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
+  (let [response (request {:url    api-path
+                           :method :post
+                           :as     :text
+                           :body   {:logger-key     logger-key
+                                    :logger-id      logger-id
+                                    :logger-version logger-version
+                                    :logs           logs}})]
+    (when (error? response)
+      response)))

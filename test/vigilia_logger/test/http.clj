@@ -63,14 +63,15 @@
   - Logging endpoint:
      - GET: Returns map of :logging-allowed? and :href
      - POST: accepts logs"
-  [req]
-  (let [project-path (u/path :project u/project-id)
-        logging-path (u/path :project u/project-id :logging)
-        handler (make-handler {project-path {:get ^:transit? {:logging {:href (u/url logging-path)}}}
-                               logging-path {:get  ^:transit? {:href             (u/url logging-path)
-                                                               :logging-allowed? true}
-                                             :post "logs accepted"}})]
-    (handler req)))
+  ([req] (simple-vigilia-handler (constantly "logs accepted") req))
+  ([post-fn req]
+   (let [project-path (u/path :project u/project-id)
+         logging-path (u/path :project u/project-id :logging)
+         handler (make-handler {project-path {:get ^:transit? {:logging {:href (u/url logging-path)}}}
+                                logging-path {:get  ^:transit? {:href             (u/url logging-path)
+                                                                :logging-allowed? true}
+                                              :post (post-fn req)}})]
+     (handler req))))
 
 (deftest get-project-logger-data
   (u/with-test-configs
@@ -90,3 +91,32 @@
       (is (false? (http/credentials-valid?))))
     (u/with-server (fn [req] {:status 500})
       (is (false? (http/credentials-valid?))))))
+
+(deftest send-logs
+  (let [*posted (atom nil)
+        logs {:1234 {:name "My device"}
+              :1235 {:name "My other device"}}
+        args {:api-path       (u/url :project u/project-id :logging)
+              :logger-id      "logger-1"
+              :logger-key     u/logger-key
+              :logger-version "1.1"
+              :project-id     u/project-id}]
+    (u/with-server (fn [req] {:status 403})
+      (is (http/send-logs args logs) "Returns non nil on error"))
+    (u/with-test-configs
+      (u/with-server
+        (partial simple-vigilia-handler
+                 ;; This is how we handle logging 'post'
+                 (fn post [req]
+                   (when-let [body (some-> req :body slurp http/transit-decode)]
+                     (reset! *posted body)
+                     "Accepted!")))
+        ;; Now send the logs, NIL on success
+        (is (nil? (http/send-logs args logs))
+            "Nil on success")
+        ;; What did the server get?
+        (is (= {:logger-id      "logger-1",
+                :logger-key     u/logger-key
+                :logger-version "1.1"
+                :logs           logs}
+               @*posted))))))

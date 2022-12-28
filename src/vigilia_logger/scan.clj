@@ -193,22 +193,6 @@
          (sort))))
 
 
-
-(defn send-logs
-  "Send the logs to the remote server. NIL if successful. In case of
-  error, return the response."
-  [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
-  (let [response (http/request {:url    api-path
-                                :method :post
-                                :as     :text
-                                :body   {:logger-key     logger-key
-                                         :logger-id      logger-id
-                                         :logger-version logger-version
-                                         :logs           logs}})]
-    (when (http/error? response)
-      response)))
-
-
 (defn send-to-remote-server
   "Send the data to remote servers. Return NIL if successful."
   [data]
@@ -216,12 +200,12 @@
         {:keys [logging-allowed? href]} (http/get-project-logger-data project-id logger-key)]
     ;; Check if server intend to accept our logs before sending them
     (if logging-allowed?
-      (send-logs {:api-path       href
-                  :project-id     project-id
-                  :logger-id      (configs/get-logger-id!)
-                  :logger-version logger-version
-                  :logger-key     logger-key}
-                 data)
+      (http/send-logs {:api-path       href
+                       :project-id     project-id
+                       :logger-id      (configs/get-logger-id!)
+                       :logger-version logger-version
+                       :logger-key     logger-key}
+                      data)
       :logging-not-allowed)))
 
 
