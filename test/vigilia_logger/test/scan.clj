@@ -8,19 +8,6 @@
             [vigilia-logger.scan :as scan]
             [vigilia-logger.test.util :as u]))
 
-(deftest logger-id
-  (u/with-test-configs
-    ;; init config without any logger-id
-    (configs/save! {})
-    ;; make sure we really don't have any ID
-    (is (not (:logger-id (configs/fetch))))
-    ;; now we should create one on-the-fly and it should always remain
-    ;; the same.
-    (let [id (scan/get-logger-id!)] ;; initial creation
-      (is id)
-      (is (= id (:logger-id (configs/fetch))))
-      (is (= id (scan/get-logger-id!))))))
-
 (deftest logs-path
   (u/with-test-configs
     ;; clear init config

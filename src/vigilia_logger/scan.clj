@@ -13,37 +13,6 @@
             [vigilia-logger.encoding :as encoding]
             [vigilia-logger.http :as http]))
 
-;;; logger ID generation
-
-(def ^{:private true} constituent-chars
-  "Characters: a-z, A-Z, 0-9."
-  (->> [[\a \z] [\A \Z] [\0 \9]]
-       (mapcat (fn [[x y]] (range (int x) (inc (int y)))))
-       (map char)
-       vec))
-
-(defn- rand-string
-  "Generates a random string of [A-z0-9] of length n."
-  [n]
-  (apply str (repeatedly n #(rand-nth constituent-chars))))
-
-(defn- new-logger-id!
-  "Generate a new logger-id, save it into the config file and return
-  it."
-  [logger-configs]
-  (let [new-id (str "logger-" (rand-string 6))]
-    (-> logger-configs
-        (assoc :logger-id new-id)
-        (configs/save!))
-    new-id))
-
-(defn get-logger-id!
-  "Get the existing logger id, or generate one and save it before
-  returning it."
-  []
-  (let [configs (configs/fetch)]
-    (or (:logger-id configs)
-        (new-logger-id! configs))))
 
 ;;; Remote server communication
 
@@ -301,7 +270,7 @@
     (if (:logging-allowed? project-logger-data)
       (send-logs {:api-path       (:href project-logger-data)
                   :project-id     project-id
-                  :logger-id      (get-logger-id!)
+                  :logger-id      (configs/get-logger-id!)
                   :logger-version logger-version
                   :logger-key     logger-key}
                  data)
@@ -322,7 +291,10 @@
     (when (send-to-remote-server data) ;; nil on success
       ;; if it doesn't work, save data locally.
       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
-        (let [filename (str/join "-" ["vigilia" (get-logger-id!) (str (encoding/timestamp) ".log")])]
+        (let [filename (str/join "-" ["vigilia"
+                                      (configs/get-logger-id!)
+                                      (str (encoding/timestamp)
+                                           ".log")])]
           (spit-log! filename data))))))
 
 (defn read-log

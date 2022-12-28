@@ -35,3 +35,36 @@
   []
   (or (:logs-path (fetch))
       path))
+
+
+;;; logger ID generation
+
+(def ^{:private true} constituent-chars
+  "Characters: a-z, A-Z, 0-9."
+  (->> [[\a \z] [\A \Z] [\0 \9]]
+       (mapcat (fn [[x y]] (range (int x) (inc (int y)))))
+       (map char)
+       vec))
+
+(defn- rand-string
+  "Generates a random string of [A-z0-9] of length n."
+  [n]
+  (apply str (repeatedly n #(rand-nth constituent-chars))))
+
+(defn- new-logger-id!
+  "Generate a new logger-id, save it into the config file and return
+  it."
+  [logger-configs]
+  (let [new-id (str "logger-" (rand-string 6))]
+    (-> logger-configs
+        (assoc :logger-id new-id)
+        (save!))
+    new-id))
+
+(defn get-logger-id!
+  "Get the existing logger id, or generate one and save it before
+  returning it."
+  []
+  (let [configs (fetch)]
+    (or (:logger-id configs)
+        (new-logger-id! configs))))
