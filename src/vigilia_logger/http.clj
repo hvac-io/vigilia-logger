@@ -1,7 +1,8 @@
 (ns vigilia-logger.http
   (:require [clj-http.client :as http-client]
             [cognitect.transit :as transit]
-            [vigilia-logger.configs :as configs])
+            [vigilia-logger.configs :as configs]
+            [clojure.tools.logging :as log])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
 (defn transit-decode
@@ -28,7 +29,7 @@
                                         204 205 206 207
                                         208 226]))))
 
-(defn transit-request
+(defn- transit-request
   "Wrap `http-client/request` to automatically encode/decode transit when applicable."
   [req]
   (let [req-config (merge {:headers {"Content-Type" "application/transit+json"
@@ -72,3 +73,36 @@
                                 :method :get
                                 :as     :text})))
     (catch java.net.ConnectException _)))
+
+(defn- fetch-logger-api-path
+  "Given the root API path and a project-id, query the API to find out
+  what is the logger path and return it."
+  [api-root project-id]
+  (some-> (request {:url (str api-root "/project/" project-id)})
+          (get-in [:body :logging :href])))
+
+(defn get-project-logger-data
+  "Return various logger data from the project API, or nil in case of
+  http error (most probably 403: forbidden) or bad project."
+  ([project-id logger-key]
+   (get-project-logger-data (configs/api-root) project-id logger-key))
+  ([api-root-path project-id logger-key]
+   (when-let [api-path (fetch-logger-api-path api-root-path project-id)]
+     (let [response (request {:query-params {:logger-key logger-key}
+                              :url          api-path})]
+       (if (error? response)
+         (log/warn (str response))
+         (:body response))))))
+
+
+(defn credentials-valid?
+  "True if credentials can connect to Vigilia server. Any http
+  error (including 403) will return false."
+  ([] (let [configs (configs/fetch)]
+        (credentials-valid? (:project-id configs) (:logger-key configs))))
+  ([project-id logger-key]
+   (if (get-project-logger-data
+        (configs/api-root) project-id logger-key)
+     true
+     false)))
+

@@ -14,44 +14,6 @@
             [vigilia-logger.http :as http]))
 
 
-;;; Remote server communication
-
-(defn get-logger-api-path
-  "Given the root API path and a project-id, query the API to find out
-  what is the logger path and return it."
-  [api-root project-id]
-  (some-> (http/request {:url (str api-root "/project/" project-id)})
-          (get-in [:body :logging :href])))
-
-(defn get-project-logger-data
-  "Return various logger data from the project API, or nil in case of
-  http error (most probably 403: forbidden) or bad project."
-  [api-root-path project-id key]
-  (when-let [api-path (get-logger-api-path api-root-path project-id)]
-    (let [response (http/request {:query-params {:logger-key key}
-                                  :url          api-path})]
-      (if-not (http/error? response)
-        (:body response)
-        (log/warn (str response))))))
-
-
-(defn credentials-valid?
-  "Load the current configs and try to connect to the Vigilia
-  server."
-  ([] (let [configs (configs/fetch)]
-        (credentials-valid? (:project-id configs) (:logger-key configs))))
-  ([project-id logger-key]
-   (when (get-project-logger-data
-          (get-api-root) project-id logger-key)
-     true)))
-
-
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-
 
 
 (def logger-version
@@ -250,15 +212,11 @@
 (defn send-to-remote-server
   "Send the data to remote servers. Return NIL if successful."
   [data]
-  (let [configs (configs/fetch)
-        {:keys [project-id logger-key
-                logger-id]} configs
-        project-logger-data (get-project-logger-data
-                             (configs/api-root) project-id
-                             logger-key)]
+  (let [{:keys [project-id logger-key]} (configs/fetch)
+        {:keys [logging-allowed? href]} (http/get-project-logger-data project-id logger-key)]
     ;; Check if server intend to accept our logs before sending them
-    (if (:logging-allowed? project-logger-data)
-      (send-logs {:api-path       (:href project-logger-data)
+    (if logging-allowed?
+      (send-logs {:api-path       href
                   :project-id     project-id
                   :logger-id      (configs/get-logger-id!)
                   :logger-version logger-version
