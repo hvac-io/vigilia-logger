@@ -17,7 +17,7 @@
                        {:decoded (some-> body http/transit-decode)
                         :raw     body})
              :headers {"Content-Type" "application/transit+json"}}))]
-    (u/with-server transit-echo
+    (u/with-server transit-echo-handler
       (testing "Transit body"
         (let [data {:a 1}
               resp (http/request {:body data
