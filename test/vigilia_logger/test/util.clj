@@ -17,10 +17,10 @@
 (def logger-key 12)
 
 (defmacro with-test-configs
-  "Temporarily redefine the config path and seed the config value.
+  "Temporarily overshadow the config path and seed the config value.
   Everything in the temporary config path will be deleted afterward"
   [& body]
-  `(with-redefs [configs/path "test-path/"]
+  `(with-redefs [configs/path (str (gensym "test-path-") "/")]
      ;; save an initial config file
      (configs/save! {:time-interval 1
                      :api-root      (str "http://localhost:" test-port)
