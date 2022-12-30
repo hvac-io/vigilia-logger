@@ -4,6 +4,8 @@
             [vigilia-logger.http :as http]
             [vigilia-logger.test.util :as u]))
 
+(def ^:private wrong-port-url "http://localhost:2122")
+
 (deftest roundtrip-transit
   (let [data {:a 1, :b "text", :c {:d :nested}}]
     (is (= data
@@ -40,7 +42,7 @@
                              "/no" {:status 404}))
     (is (http/can-connect? (u/url "/yes")))
     (is (not (http/can-connect? (u/url "/no"))))
-    (is (not (http/can-connect? "http://localhost:2122")) ; <-- wrong port
+    (is (not (http/can-connect? wrong-port-url))
         "Do not throw on 'connection refused'")))
 
 
@@ -67,7 +69,7 @@
   - Project root: return a link to the logging endpoint.
   - Logging endpoint:
      - GET: Returns map of :logging-allowed? and :href
-     - POST: accepts logs"
+     - POST: accepts logs with post-fn"
   ([req] (simple-vigilia-handler (constantly "logs accepted") req))
   ([post-fn req]
    (let [project-path (u/path :project u/project-id)
@@ -78,14 +80,14 @@
                                               :post post-fn}})]
      (handler req))))
 
-(deftest get-project-logger-data
+(deftest fetch-project-logger-data
   (u/with-test-configs
     (u/with-server simple-vigilia-handler
       (is (= {:logging-allowed? true
               :href             (u/url :project u/project-id :logging)}
-             (http/get-project-logger-data u/project-id u/logger-key))))
+             (http/fetch-project-logger-data u/project-id u/logger-key))))
     (u/with-server (fn [req] {:status 404})
-      (is (nil? (http/get-project-logger-data u/project-id u/logger-key))
+      (is (nil? (http/fetch-project-logger-data u/project-id u/logger-key))
           "Returns nil on error"))))
 
 (deftest credentials-valid?
@@ -98,20 +100,19 @@
       (is (false? (http/credentials-valid?))))))
 
 (deftest send-log
-  (u/with-test-configs
-    (let [*posted (atom nil)
+  (let [*posted (atom nil)
           log {:1234 {:name "My device"}
-               :1235 {:name "My other device"}}]
+               :1235 {:name "My other device"}}
+          handler (partial simple-vigilia-handler
+                           ;; This is how we handle logging 'post'
+                           (fn post [req]
+                             (when-let [body (some-> req :body slurp http/transit-decode)]
+                               (reset! *posted body)
+                               "Accepted!")))]
+    (u/with-test-configs
       (u/with-server (fn [req] {:status 403})
         (is (http/send-log log) "Returns non nil on error"))
-      (u/with-server
-        (partial simple-vigilia-handler
-                 ;; This is how we handle logging 'post'
-                 (fn post [req]
-                   (when-let [body (some-> req :body slurp http/transit-decode)]
-                     (reset! *posted body)
-                     "Accepted!")))
-        ;; Now send the log, NIL on success
+      (u/with-server handler ;; Now send the log, NIL on success
         (is (nil? (http/send-log log))
             "Nil on success")
         ;; What did the server get?
@@ -119,4 +120,8 @@
                 :logger-key     u/logger-key
                 :logger-version http/logger-version
                 :logs           log}
-               @*posted))))))
+               @*posted))))
+    (testing "Exceptions are catched"
+      (u/with-test-configs
+        (configs/save! {:api-root wrong-port-url})
+        (is (http/send-log log) "Not nil on exception")))))

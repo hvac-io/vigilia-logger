@@ -70,9 +70,7 @@
   "True if we can reach the specified url."
   [url]
   (try
-    (not (error? (request {:url    url
-                           :method :get
-                           :as     :text})))
+    (not (error? (request {:url url})))
     (catch java.net.ConnectException _)))
 
 (defn- fetch-logger-api-path
@@ -82,17 +80,16 @@
   (some-> (request {:url (str api-root "/project/" project-id)})
           (get-in [:body :logging :href])))
 
-(defn get-project-logger-data
+(defn fetch-project-logger-data
   "Return various logger data from the project API, or nil in case of
   http error (most probably 403: forbidden) or bad project."
   ([project-id logger-key]
-   (get-project-logger-data (configs/api-root) project-id logger-key))
+   (fetch-project-logger-data (configs/api-root) project-id logger-key))
   ([api-root-path project-id logger-key]
    (when-let [api-path (fetch-logger-api-path api-root-path project-id)]
      (let [response (request {:query-params {:logger-key logger-key}
                               :url          api-path})]
-       (if (error? response)
-         (log/warn (str response))
+       (when-not (error? response)
          (:body response))))))
 
 
@@ -102,8 +99,7 @@
   ([] (let [configs (configs/fetch)]
         (credentials-valid? (:project-id configs) (:logger-key configs))))
   ([project-id logger-key]
-   (if (get-project-logger-data
-        (configs/api-root) project-id logger-key)
+   (if (fetch-project-logger-data (configs/api-root) project-id logger-key)
      true
      false)))
 
@@ -114,24 +110,28 @@
 
 (defn send-log
   "Send the log to remote server using the saved configurations.
-  Return NIL if successful."
+  Return NIL if successful.
+  Catch all exceptions"
   [log]
-  (let [{:keys [project-id logger-key]} (configs/fetch)
-        {:keys [logging-allowed? href]} (get-project-logger-data project-id logger-key)]
-    ;; Check if server intends to accept our scan
-    (if-not logging-allowed?
-      :logging-not-allowed
-      (let [response (request {:url    href
-                               :method :post
-                               :as     :text
-                               :body   {:logger-key     logger-key
-                                        :logger-id      (configs/get-logger-id!)
-                                        :logger-version logger-version
-                                        ; For historical reason the
-                                        ; API expects :logs, but it
-                                        ; makes more sense to call it
-                                        ; :log (singular) in this
-                                        ; codebase.
-                                        :logs           log}})]
-        (when (error? response)
-          response)))))
+  (try
+    (let [{:keys [project-id logger-key]} (configs/fetch)
+          {:keys [logging-allowed? href]} (fetch-project-logger-data project-id logger-key)]
+      ;; Check if server intends to accept our scan
+      (if-not logging-allowed?
+        :logging-not-allowed
+        (let [response (request {:url    href
+                                 :method :post
+                                 :as     :text
+                                 :body   {:logger-key     logger-key
+                                          :logger-id      (configs/get-logger-id!)
+                                          :logger-version logger-version
+                                          ; For historical reason the
+                                          ; API expects :logs, but it
+                                          ; makes more sense to call it
+                                          ; :log (singular) in this
+                                          ; codebase.
+                                          :logs           log}})]
+          (when (error? response)
+            response))))
+    (catch Exception e
+      {:exception e})))

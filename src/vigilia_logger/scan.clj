@@ -191,14 +191,16 @@
   []
   (let [log (scan-network)]
     ;; try to send to server
-    (when (http/send-log log) ;; nil on success
-      ;; if it doesn't work, save log locally.
-      (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
-        (let [filename (str/join "-" ["vigilia"
-                                      (configs/get-logger-id!)
-                                      (str (encoding/timestamp)
-                                           ".log")])]
-          (spit-log! filename log))))))
+    (let [error? (http/send-log log)] ;; nil on success
+      (when error?
+        (log/warn "Remote server can't be reached or refused the log.")
+        ;; if it doesn't work, save log locally.
+        (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
+          (let [filename (str/join "-" ["vigilia"
+                                        (configs/get-logger-id!)
+                                        (str (encoding/timestamp)
+                                             ".log")])]
+            (spit-log! filename log)))))))
 
 (defn read-log
   "Read the log and return a map or nil."
@@ -226,6 +228,6 @@
                       (log/info "Sent.")
                       (recur rest-logs))
                   ; An error a this point is probably a network problem.
-                  ; De not recur (stop trying to send logs).
+                  ; Do not recur (stop trying to send logs).
                   (log/warn "Remote server can't be reached or refused the log."))))
           (log/info "No more local logs to send."))))))

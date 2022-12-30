@@ -9,18 +9,19 @@
             [vigilia-logger.test.util :as u]))
 
 (deftest logs-path
-  (u/with-test-configs
-    (is (= (configs/logs-path) configs/path) "Default path")
-    (let [new-path "test-some-other-path/"]
-      (u/with-server (fn [req] {:status 404})
-        ;; new logs path
-        (configs/save! (merge (configs/fetch) {:logs-path new-path}))
-        (scan/scan-and-send) ;; generate a log file
-        (is (= (count (scan/find-unsent-logs)) 1)) ;; can we find it?
-        (is (some? (seq (.listFiles (io/file new-path))))) ;; is it really where we expect it?
+  (timbre/with-level :fatal
+    (u/with-test-configs
+      (is (= (configs/logs-path) configs/path) "Default path")
+      (let [new-path "test-some-other-path/"]
+        (u/with-server (fn [req] {:status 404})
+          ;; new logs path
+          (configs/save! (merge (configs/fetch) {:logs-path new-path}))
+          (scan/scan-and-send) ;; generate a log file
+          (is (= (count (scan/find-unsent-logs)) 1)) ;; can we find it?
+          (is (some? (seq (.listFiles (io/file new-path))))) ;; is it really where we expect it?
 
-        ;; cleanup
-        (u/delete-recursively! new-path)))))
+          ;; cleanup
+          (u/delete-recursively! new-path))))))
 
 (deftest read-logs
   (u/with-test-configs
