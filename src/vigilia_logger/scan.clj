@@ -8,22 +8,9 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [com.climate.claypoole.lazy :as lazy]
-            [trptcolin.versioneer.core :as version]
             [vigilia-logger.configs :as configs]
             [vigilia-logger.encoding :as encoding]
             [vigilia-logger.http :as http]))
-
-
-
-
-(def logger-version
-  "The logger version used to check what data encoding is used."
-  (str "vigilia-logger-" (version/get-version "io.hvac.vigilia.logger" "vigilia-logger")))
-
-
-
-
-
 
 ;;; section for 'advanced' filtering
 
@@ -193,23 +180,7 @@
          (sort))))
 
 
-(defn send-to-remote-server
-  "Send the data to remote servers. Return NIL if successful."
-  [data]
-  (let [{:keys [project-id logger-key]} (configs/fetch)
-        {:keys [logging-allowed? href]} (http/get-project-logger-data project-id logger-key)]
-    ;; Check if server intend to accept our logs before sending them
-    (if logging-allowed?
-      (http/send-logs {:api-path       href
-                       :project-id     project-id
-                       :logger-id      (configs/get-logger-id!)
-                       :logger-version logger-version
-                       :logger-key     logger-key}
-                      data)
-      :logging-not-allowed)))
-
-
-(defn spit-log!
+(defn- spit-log!
   [filename data]
   (local/mkdir-spit (str (configs/logs-path) filename) data))
 
@@ -218,16 +189,16 @@
   can't be reached, save the result in a .log file. Only saves up to
   2016 logs."
   []
-  (let [data (scan-network)]
+  (let [log (scan-network)]
     ;; try to send to server
-    (when (send-to-remote-server data) ;; nil on success
-      ;; if it doesn't work, save data locally.
+    (when (http/send-log log) ;; nil on success
+      ;; if it doesn't work, save log locally.
       (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
         (let [filename (str/join "-" ["vigilia"
                                       (configs/get-logger-id!)
                                       (str (encoding/timestamp)
                                            ".log")])]
-          (spit-log! filename data))))))
+          (spit-log! filename log))))))
 
 (defn read-log
   "Read the log and return a map or nil."
@@ -249,7 +220,7 @@
       (loop [[log-name & rest-logs] logs]
         (if log-name
           (do (log/info (str "sending " log-name "..."))
-              (let [error? (send-to-remote-server (read-log logs-path log-name))]
+              (let [error? (http/send-log (read-log logs-path log-name))]
                 (if-not error?
                   (do (io/delete-file (str logs-path log-name))
                       (log/info "Sent.")

@@ -10,18 +10,11 @@
 
 (deftest logs-path
   (u/with-test-configs
-    ;; clear init config
-    (configs/save! {})
-
-    ;; default path
-    (is (= (configs/logs-path)
-           configs/path))
-
+    (is (= (configs/logs-path) configs/path) "Default path")
     (let [new-path "test-some-other-path/"]
-      ;; new logs path
-      (configs/save! {:logs-path new-path})
-
-      (with-redefs [scan/send-to-remote-server (fn [_] :fail)]
+      (u/with-server (fn [req] {:status 404})
+        ;; new logs path
+        (configs/save! (merge (configs/fetch) {:logs-path new-path}))
         (scan/scan-and-send) ;; generate a log file
         (is (= (count (scan/find-unsent-logs)) 1)) ;; can we find it?
         (is (some? (seq (.listFiles (io/file new-path))))) ;; is it really where we expect it?
@@ -86,6 +79,6 @@
 
         (testing "Server accepts logs"
           (u/with-server simple-vigilia-handler
-            (scan/send-to-remote-server {:a 1})
+            (http/send-log {:a 1})
             (scan/send-local-logs)
             (is (= 0 (count (scan/find-unsent-logs))))))))))

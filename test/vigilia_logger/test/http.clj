@@ -1,5 +1,6 @@
 (ns vigilia-logger.test.http
   (:require [clojure.test :refer :all]
+            [vigilia-logger.configs :as configs]
             [vigilia-logger.http :as http]
             [vigilia-logger.test.util :as u]))
 
@@ -46,16 +47,20 @@
 (defn make-handler
   "Will convert response to transit if the metadata :transit? is true.
 
-  {\"some-path\" {:get <response>}}"
+  {\"some-path\" {:get <response>}
+   \"some-path2\" {:get <handler-fn>}}"
   [routes-map]
   (fn [req]
-    (if-let [response (get-in routes-map [(:uri req) (:request-method req)])]
-      (if (:transit? (meta response))
-        {:body    (http/transit-encode response)
-         :headers {"content-type" "application/transit+json"}
-         :status  200}
-        {:body   response
-         :status 200}))))
+    (if-let [route-handler (get-in routes-map [(:uri req) (:request-method req)])]
+      (let [response (if (fn? route-handler)
+                       (route-handler req)
+                       route-handler)]
+        (if (:transit? (meta response))
+          {:body    (http/transit-encode response)
+           :headers {"content-type" "application/transit+json"}
+           :status  200}
+          {:body   response
+           :status 200})))))
 
 (defn simple-vigilia-handler
   "Simulate the Vigilia API.
@@ -70,7 +75,7 @@
          handler (make-handler {project-path {:get ^:transit? {:logging {:href (u/url logging-path)}}}
                                 logging-path {:get  ^:transit? {:href             (u/url logging-path)
                                                                 :logging-allowed? true}
-                                              :post (post-fn req)}})]
+                                              :post post-fn}})]
      (handler req))))
 
 (deftest get-project-logger-data
@@ -92,18 +97,13 @@
     (u/with-server (fn [req] {:status 500})
       (is (false? (http/credentials-valid?))))))
 
-(deftest send-logs
-  (let [*posted (atom nil)
-        logs {:1234 {:name "My device"}
-              :1235 {:name "My other device"}}
-        args {:api-path       (u/url :project u/project-id :logging)
-              :logger-id      "logger-1"
-              :logger-key     u/logger-key
-              :logger-version "1.1"
-              :project-id     u/project-id}]
-    (u/with-server (fn [req] {:status 403})
-      (is (http/send-logs args logs) "Returns non nil on error"))
-    (u/with-test-configs
+(deftest send-log
+  (u/with-test-configs
+    (let [*posted (atom nil)
+          log {:1234 {:name "My device"}
+               :1235 {:name "My other device"}}]
+      (u/with-server (fn [req] {:status 403})
+        (is (http/send-log log) "Returns non nil on error"))
       (u/with-server
         (partial simple-vigilia-handler
                  ;; This is how we handle logging 'post'
@@ -111,12 +111,12 @@
                    (when-let [body (some-> req :body slurp http/transit-decode)]
                      (reset! *posted body)
                      "Accepted!")))
-        ;; Now send the logs, NIL on success
-        (is (nil? (http/send-logs args logs))
+        ;; Now send the log, NIL on success
+        (is (nil? (http/send-log log))
             "Nil on success")
         ;; What did the server get?
-        (is (= {:logger-id      "logger-1",
+        (is (= {:logger-id      (configs/get-logger-id!)
                 :logger-key     u/logger-key
-                :logger-version "1.1"
-                :logs           logs}
+                :logger-version http/logger-version
+                :logs           log}
                @*posted))))))

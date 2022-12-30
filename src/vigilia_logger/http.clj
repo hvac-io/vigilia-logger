@@ -2,6 +2,7 @@
   (:require [clj-http.client :as http-client]
             [cognitect.transit :as transit]
             [vigilia-logger.configs :as configs]
+            [trptcolin.versioneer.core :as version]
             [clojure.tools.logging :as log])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
@@ -96,8 +97,8 @@
 
 
 (defn credentials-valid?
-  "True if credentials can connect to Vigilia server. Any http
-  error (including 403) will return false."
+  "True if credentials can connect to Vigilia server.
+  Any http error (including 403) will return false."
   ([] (let [configs (configs/fetch)]
         (credentials-valid? (:project-id configs) (:logger-key configs))))
   ([project-id logger-key]
@@ -106,16 +107,31 @@
      true
      false)))
 
-(defn send-logs
-  "Send the logs to the remote server. NIL if successful. In case of
-  error, return the response."
-  [{:keys [api-path project-id logger-id logger-version logger-key]} logs]
-  (let [response (request {:url    api-path
-                           :method :post
-                           :as     :text
-                           :body   {:logger-key     logger-key
-                                    :logger-id      logger-id
-                                    :logger-version logger-version
-                                    :logs           logs}})]
-    (when (error? response)
-      response)))
+(def logger-version
+  "The logger version used to check what data encoding is used."
+  (let [artifact "vigilia-logger"]
+    (str artifact "-" (version/get-version "io.hvac.vigilia.logger" artifact))))
+
+(defn send-log
+  "Send the log to remote server using the saved configurations.
+  Return NIL if successful."
+  [log]
+  (let [{:keys [project-id logger-key]} (configs/fetch)
+        {:keys [logging-allowed? href]} (get-project-logger-data project-id logger-key)]
+    ;; Check if server intends to accept our scan
+    (if-not logging-allowed?
+      :logging-not-allowed
+      (let [response (request {:url    href
+                               :method :post
+                               :as     :text
+                               :body   {:logger-key     logger-key
+                                        :logger-id      (configs/get-logger-id!)
+                                        :logger-version logger-version
+                                        ; For historical reason the
+                                        ; API expects :logs, but it
+                                        ; makes more sense to call it
+                                        ; :log (singular) in this
+                                        ; codebase.
+                                        :logs           log}})]
+        (when (error? response)
+          response)))))
