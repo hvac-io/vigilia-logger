@@ -37,8 +37,7 @@
   "Wrap `http-client/request` to automatically encode/decode transit when applicable."
   [req]
   (let [req-config (merge {:headers {"Content-Type" "application/transit+json"
-                                     "Accept"       "application/transit+json"}
-                           :method  :get}
+                                     "Accept"       "application/transit+json"}}
                           req)
         response (-> req-config
                      (update :body #(when % (transit-encode %)))
@@ -60,14 +59,16 @@
 (defn request
   "Similar to `http-client/request`.
   - Doesn't throw by default;
-  - Automatically handles transit encoding/decoding;
   - Automatically includes proxy configs;
-  - :get request by default."
+  - :get request by default.
+
+  Adding :transit? will automatically handle transit encoding/decoding."
   [req]
-  (transit-request (-> {:method           :get
-                        :throw-exceptions false}
-                       (with-proxy-configs)
-                       (merge req))))
+  (let [req-f (if (:transit? req) transit-request http-client/request)]
+    (req-f (-> {:method           :get
+                :throw-exceptions false}
+               (with-proxy-configs)
+               (merge req)))))
 
 (defn can-connect?
   "True if we can reach the specified url."
@@ -80,7 +81,8 @@
   "Given the root API path and a project-id, query the API to find out
   what is the logger path and return it."
   [api-root project-id]
-  (some-> (request {:url (str api-root "/project/" project-id)})
+  (some-> (request {:url (str api-root "/project/" project-id)
+                    :transit? true})
           (get-in [:body :logging :href])))
 
 (defn fetch-project-logger-data
@@ -91,7 +93,8 @@
   ([api-root-path project-id logger-key]
    (when-let [api-path (fetch-logger-api-path api-root-path project-id)]
      (let [response (request {:query-params {:logger-key logger-key}
-                              :url          api-path})]
+                              :url          api-path
+                              :transit? true})]
        (when-not (error? response)
          (:body response))))))
 
@@ -122,18 +125,19 @@
       ;; Check if server intends to accept our scan
       (if-not logging-allowed?
         :logging-not-allowed
-        (let [response (request {:url    href
-                                 :method :post
-                                 :as     :text
-                                 :body   {:logger-key     logger-key
-                                          :logger-id      (configs/get-logger-id!)
-                                          :logger-version logger-version
-                                          ; For historical reason the
-                                          ; API expects :logs, but it
-                                          ; makes more sense to call it
-                                          ; :log (singular) in this
-                                          ; codebase.
-                                          :logs           log}})]
+        (let [response (request {:url      href
+                                 :method   :post
+                                 :as       :text
+                                 :body     {:logger-key     logger-key
+                                            :logger-id      (configs/get-logger-id!)
+                                            :logger-version logger-version
+                                            ; For historical reason the
+                                            ; API expects :logs, but it
+                                            ; makes more sense to call it
+                                            ; :log (singular) in this
+                                            ; codebase.
+                                            :logs           log}
+                                 :transit? true})]
           (when (error? response)
             response))))
     (catch Exception e

@@ -24,22 +24,29 @@
       (testing "Transit body"
         (let [data {:a 1}
               resp (http/request {:body data
-                                  :url  (u/url "/any")})]
+                                  :url  (u/url "/any")
+                                  :transit? true})]
           (is (= data (-> resp :body :decoded)))))
       (testing "No body"
-        (let [resp (http/request {:url (u/url "/any")})]
+        (let [resp (http/request {:url (u/url "/any")
+                                  :transit? true})]
           (is (= nil
                  (-> resp :body :decoded)
                  (-> resp :body :raw))))))
     (testing "Not a transit response"
       (u/with-server (fn [req] {:status 200, :body "Hello!"})
-        (let [resp (http/request {:url (u/url "/any")})]
+        (let [resp (http/request {:url (u/url "/any")
+                                  :transit? true})]
           (is (= "Hello!" (:body resp))))))))
 
 (deftest can-connect?
-  (u/with-server (fn [req] (condp = (:uri req)
-                             "/yes" {:status 200}
-                             "/no" {:status 404}))
+  (u/with-server (fn [req]
+                   (when (= (get-in req [:headers "accept"])
+                            "application/transit+json")
+                     (throw (ex-info "Unexpected transit request" {})))
+                   (condp = (:uri req)
+                     "/yes" {:status 200}
+                     "/no" {:status 404}))
     (is (http/can-connect? (u/url "/yes")))
     (is (not (http/can-connect? (u/url "/no"))))
     (is (not (http/can-connect? wrong-port-url))
