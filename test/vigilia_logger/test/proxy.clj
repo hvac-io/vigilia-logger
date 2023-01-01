@@ -9,7 +9,6 @@
             [taoensso.timbre :as timbre]
             [vigilia-logger.configs :as configs]
             [vigilia-logger.http :as http]
-            [vigilia-logger.scan :as scan]
             [vigilia-logger.test.util :as u]))
 
 ;; from the http-kit test directory
