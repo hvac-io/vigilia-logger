@@ -1,9 +1,8 @@
 (ns vigilia-logger.http
   (:require [clj-http.client :as http-client]
             [cognitect.transit :as transit]
-            [vigilia-logger.configs :as configs]
             [trptcolin.versioneer.core :as version]
-            [clojure.tools.logging :as log])
+            [vigilia-logger.configs :as configs])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
 
 (defn transit-decode
@@ -24,11 +23,15 @@
      ;; get the encoded data
      (.toString out "UTF-8"))))
 
-(defn error? [response]
-  (or (:error response)
-      (not (some #{(:status response)} [200 201 202 203
-                                        204 205 206 207
-                                        208 226]))))
+(defn error?
+  "True if response has :error, or if the http status is not one of the
+  successful ones (200 ... 226).
+  "[response]
+  (let [successful-statuses #{200 201 202 203
+                              204 205 206 207
+                              208 226}]
+    (or (:error response)
+        (not (successful-statuses (:status response))))))
 
 (defn- transit-request
   "Wrap `http-client/request` to automatically encode/decode transit when applicable."
