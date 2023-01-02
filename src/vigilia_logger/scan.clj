@@ -101,14 +101,14 @@
          :scanning-time-ms 0
          :completed-scans  0}))
 
-(defn- mark-as-scanning! [device-id]
+(defn- scanning! [device-id]
   (swap! scanning-state update-in [:ids-scanning] conj device-id))
 
-(defn- mark-as-scanned! [device-id]
-  (let [ss @scanning-state]
-    (reset! scanning-state
-            (-> (update-in ss [:ids-scanning] disj device-id)
-                (update-in [:ids-scanned] conj device-id)))))
+(defn- scanned! [device-id]
+  (swap! scanning-state
+         (fn [m]
+           (-> (update-in m [:ids-scanning] disj device-id)
+               (update-in [:ids-scanned] conj device-id)))))
 
 (defn- mark-start-of-scan! [ids-to-scan]
   (swap! scanning-state
@@ -118,18 +118,24 @@
          :ids-to-scan (set ids-to-scan)))
 
 (defn- mark-end-of-scan! []
-  (let [ss @scanning-state
-        end-time (time/now)
-        start-time (or (:start-time ss) (time/now))
-        completed (inc (:completed-scans ss))]
-    (swap! scanning-state
-           assoc
-           :completed-scans completed
-           :scanning? nil
-           :ids-scanned #{}
-           :end-time end-time
-           :scanning-time-ms (- (.getMillis end-time)
-                                (.getMillis start-time)))))
+  (swap! scanning-state
+         (fn [m]
+           (let [end-time (time/now)
+                 start-time (or (:start-time m) (time/now))]
+             (-> (update m :completed-scans inc)
+                 (assoc :scanning? nil
+                        :ids-scanned #{}
+                        :end-time end-time
+                        :scanning-time-ms (- (.getMillis end-time)
+                                             (.getMillis start-time))))))))
+
+(defmacro with-scan-status
+  [ids-to-scan & body]
+  `(do (mark-start-of-scan! ~ids-to-scan)
+       (try ~@body
+            (finally (mark-end-of-scan!)))))
+
+;;;;
 
 (defn- interleave-all
   "interleaves including remainder of longer seqs."
@@ -142,7 +148,7 @@
 
 (def ^{:private true} batch-size 20)
 
-(defn reorder-ids
+(defn- reorder-ids
   "Try to avoid consecutive ids" [ids]
   (let [colls (partition-all (max 4 (int (/ batch-size 4))) ids)]
     (apply interleave-all colls)))
@@ -152,24 +158,18 @@
 
 (defn scan-network
   "Scan the network and return a `snapshot' for logging purposes."[]
-  (let [configs (configs/fetch)
-        read-object-delay (:object-delay configs)
-        target-objects (:target-objects configs)
+  (let [{:keys [object-delay target-objects]} (configs/fetch)
         ids-to-scan (-> (find-id-to-scan)
                         (sort)
                         (reorder-ids))
         scan-fn (fn [device-id]
-                  (mark-as-scanning! device-id)
-                  (let [scan-data (encoding/scan-device device-id
-                                                        (get target-objects device-id)
-                                                        read-object-delay)]
-                    (mark-as-scanned! device-id)
-                    scan-data))]
+                  (scanning! device-id)
+                  (try
+                    (encoding/scan-device device-id (get target-objects device-id) object-delay)
+                    (finally (scanned! device-id))))]
     ;; we begin a new scan
-    (mark-start-of-scan! ids-to-scan)
-    (let [scan-result (doall (lazy/upmap batch-size scan-fn ids-to-scan))]
-      (mark-end-of-scan!)
-      (apply merge scan-result))))
+    (with-scan-status ids-to-scan
+      (apply merge (lazy/upmap batch-size scan-fn ids-to-scan)))))
 
 
 (defn find-unsent-logs []
