@@ -64,18 +64,18 @@
 
   Adding :transit? will automatically handle transit encoding/decoding."
   [req]
-  (let [req-f (if (:transit? req) transit-request http-client/request)]
-    (req-f (-> {:method           :get
-                :throw-exceptions false}
-               (with-proxy-configs)
-               (merge req)))))
+  (try
+    (let [req-f (if (:transit? req) transit-request http-client/request)]
+      (req-f (-> {:method           :get
+                  :throw-exceptions false}
+                 (with-proxy-configs)
+                 (merge req))))
+    (catch java.net.ConnectException e {:error e})))
 
 (defn can-connect?
   "True if we can reach the specified url."
   [url]
-  (try
-    (not (error? (request {:url url})))
-    (catch java.net.ConnectException _)))
+  (not (error? (request {:url url}))))
 
 (defn- fetch-logger-api-path
   "Given the root API path and a project-id, query the API to find out
