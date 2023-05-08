@@ -82,8 +82,8 @@
    (let [project-path (u/path :project u/project-id)
          logging-path (u/path :project u/project-id :logging)
          handler (make-handler {project-path {:get ^:transit? {:logging {:href (u/url logging-path)}}}
-                                logging-path {:get  ^:transit? {:href             (u/url logging-path)
-                                                                :logging-allowed? true}
+                                logging-path {:get ^:transit? {:href             (u/url logging-path)
+                                                               :logging-allowed? true}
                                               :post post-fn}})]
      (handler req))))
 

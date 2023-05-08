@@ -112,7 +112,7 @@
 (def logger-version
   "The logger version used to check what data encoding is used."
   (let [artifact "vigilia-logger"]
-    (str artifact "-" (version/get-version "io.hvac.vigilia.logger" artifact))))
+    (str artifact "-" (version/get-version "io.hvac.vigilia" artifact))))
 
 (defn send-log
   "Send the log to remote server using the saved configurations.
