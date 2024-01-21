@@ -61,7 +61,6 @@ There is many configuration options:
  :id-to-remove  ;; Remove devices by their ID
  :id-to-keep    ;; keep devices by their ID
  :time-interval ;; Time interval between each snapshots (in minutes)
- :criteria-coll ;; Advanced filtering options. See the Bacure library for details.
  :object-delay  ;; Delay (in ms) between each object scan of a device.
  :target-objects ;; Map of devices and there associated target object identifiers (if any).
  }
@@ -71,6 +70,6 @@ There is many configuration options:
 
 ## License
 
-Copyright © 2016 HVAC.IO
+Copyright © 2024 HVAC.IO
 
 GNU General Public License V3

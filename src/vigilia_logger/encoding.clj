@@ -187,6 +187,13 @@
       (update-binary :4)
       (update-binary :5)))
 
+(defn has-extended-info?
+  [id]
+  (try
+    ;; We catch errors because if the router for a given device is not
+    ;; found, it will throw an exception.
+    (rd/extended-information id)
+    (catch Exception e)))
 
 (defn scan-device
   "Return a map with the device-id as the key.
@@ -210,22 +217,23 @@
   ([device-id device-target-objects read-object-delay]
    (try
      (log/info (str "Scanning device "device-id))
-     (if-not (rd/is-alive? device-id)
-       (log/warn (str "Device "device-id " is unreachable."))
-       (let [start-time (timestamp)
-             ;; if we don't have device-target-objects, just use the remote-objects list
-             object-identifiers (-> (or device-target-objects
-                                        (bac/remote-objects device-id))
-                                    (conj [:device device-id]) ;; we always add the device object
-                                    (distinct))
-             properties (-> (get-properties device-id object-identifiers read-object-delay)
-                            (update-all-binaries))]
-         (when (seq properties) ;; only return something if we got some data
-           {(keyword (str device-id))
-            {:update        (iso-8601-timestamp)
-             :name          (get-in properties [:8 (keyword (str device-id)) :Object-name])
-             :objects       properties
-             :scan-duration (- (timestamp) start-time)}})))
+     (cond
+       (not (rd/is-alive? device-id)) (log/warn (str "Device "device-id " is unreachable."))
+       (not (has-extended-info? device-id)) (log/warn (str "Device "device-id " extended-info is missing."))
+       :else (let [start-time (timestamp)
+                   ;; if we don't have device-target-objects, just use the remote-objects list
+                   object-identifiers (-> (or device-target-objects
+                                              (bac/remote-objects device-id))
+                                          (conj [:device device-id]) ;; we always add the device object
+                                          (distinct))
+                   properties (-> (get-properties device-id object-identifiers read-object-delay)
+                                  (update-all-binaries))]
+               (when (seq properties) ;; only return something if we got some data
+                 {(keyword (str device-id))
+                  {:update        (iso-8601-timestamp)
+                   :name          (get-in properties [:8 (keyword (str device-id)) :Object-name])
+                   :objects       properties
+                   :scan-duration (- (timestamp) start-time)}})))
      (catch Exception e
        (log/error (str "Error trying to scan device "device-id ": "
                        e))))))

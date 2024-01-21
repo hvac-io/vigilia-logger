@@ -42,8 +42,7 @@
   (rd/find-remote-devices)
   (Thread/sleep 5000) ;; wait 5s
   (log/info (str "Fetching extended information for " (count (rd/remote-devices)) " devices"))
-  (rd/all-extended-information) ;; recheck for extented information
-  (scan/reset-devices-to-remove-table!))
+  (rd/all-extended-information)) ;; recheck for extented information
 
 (def scan-active? (atom nil))
 

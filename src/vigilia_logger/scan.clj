@@ -1,10 +1,10 @@
 (ns vigilia-logger.scan
-  (:require [bacure.core :as bac]
-            [bacure.local-save :as local]
+  (:require [bacure.local-save :as local]
             [bacure.remote-device :as rd]
             [clj-time.core :as time]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [com.climate.claypoole.lazy :as lazy]
@@ -12,82 +12,32 @@
             [vigilia-logger.encoding :as encoding]
             [vigilia-logger.http :as http]))
 
-;;; section for 'advanced' filtering
+;; TODO: min-range and max-range are non-inclusive, which is confusing.
+;;       Consider a breaking change to make them inclusive.
 
-(defn filter-device
-  "Test the criteria maps agains a device ID and return :remove if any
-  succeed, otherwise :keep. If the extended information is not yet
-  available, simply return nil." [id criteria-coll]
-  (try
-    (when (rd/extended-information id)
-      (let [remote-device-props
-            (bac/remote-object-properties id [:device id]
-                                          [:vendor-identifier :description :device-type
-                                           :vendor-name :object-name :model-name])]
-        ;;don't use `:all', it might not return the model-name if it's a
-        ;;device that doesn't support read-property-multiple.
-        (-> (filter (bac/where (first criteria-coll)) remote-device-props)
-            ((fn [x] (let [crits (next criteria-coll)]
-                       (cond (and (seq x) (seq (first criteria-coll))) :remove
-                             crits (filter-device id crits)
-                             :else :keep)))))))
-    (catch Exception e nil)))
-
-
-(def remove-device-table
-  "A map of the device ID, associated with its associated scan behavior.
-   Each time a new device ID is found, it should be matched against
-   the criteria-map to see if it should be scanned. Returns :keep
-   or :remove. If the device is still unchecked, it will be tested
-   before giving a result."
-  (atom {}))
-
-(defn remove-device?
-  "Check if the device ID is marked to be removed. If it hasn't been
-   tested yet, test it and record the result." [id]
-  (if-let [result (get @remove-device-table id)]
-    result
-    (if-let [criteria-coll (:criteria-coll (configs/fetch))]
-      (get (swap! remove-device-table #(->> criteria-coll
-                                            (filter-device id)
-                                            (assoc % id))) id)
-      :keep)));;if no criteria-coll, automatically keep
-
-(defn reset-devices-to-remove-table! []
-  (reset! remove-device-table {})
-  (pmap remove-device? (rd/remote-devices)))
-
-
-(defn has-extended-info?
-  [id]
-  (try
-    ;; We catch errors because if the router for a given device is not
-    ;; found, it will throw an exception.
-    (rd/extended-information id)
-    (catch Exception e)))
-
-(defn find-id-to-scan
-  "Check all the different filtering options and return a list of
-   device-id to scan." []
-  (let [{:keys [max-range min-range id-to-remove id-to-keep]} (configs/fetch)
-        id-to-keep-fn (fn [x] (if id-to-keep (clojure.set/intersection (into #{} id-to-keep) x) x))
-        id-to-remove-fn (fn [x] (clojure.set/difference x (into #{} id-to-remove)))
-        remove-device (fn [x] (filter #(= :keep (remove-device? %)) x))
-        min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
+(defn find-ids-to-scan
+  "Check all the different filtering options and return a list of sorted
+   device IDs to scan."
+  [potential-ids {:keys [max-range min-range id-to-remove id-to-keep] :as configs}]
+  (let [min-fn (fn [x] (if min-range (filter #(> % min-range) x) x))
         max-fn (fn [x] (if max-range (filter #(< % max-range) x) x))]
-    ;; and now just keep the remote devices for which we have extended information
-    (->> (rd/remote-devices)
-         ;; Avoid fetching extended-info by discarding IDs first
-         id-to-keep-fn
-         id-to-remove-fn
-         min-fn
-         max-fn
-         ;; Now check extended info
-         (filter has-extended-info?)
-         remove-device ;; <-- last to avoid querying remote devices we won't keep
-         )))
+    (cond-> (set potential-ids)
+      id-to-remove (set/difference (into #{} id-to-remove))
+      id-to-keep (set/intersection (into #{} id-to-keep))
+      true min-fn
+      true max-fn
+      true sort)))
 
-
+(comment
+  (find-ids-to-scan (range 1 15)
+                    {:min-range    5  ; remains: 6 7 8 9 10 11 12 13 14
+                     :max-range    13 ; remains: 6 7 8 9 10 11 12
+                     :id-to-keep (concat (range 1 8) ;everything but 8
+                                         (range 9 15))
+                     ; remains: 6 7 9 10 11 12
+                     :id-to-remove [11]})
+  ;=> (6 7 9 10 12)
+  )
 
 
 ;;;;;;;;;;
@@ -158,15 +108,15 @@
 
 (defn scan-network
   "Scan the network and return a `snapshot' for logging purposes."[]
-  (let [{:keys [object-delay target-objects]} (configs/fetch)
-        ids-to-scan (-> (find-id-to-scan)
-                        (sort)
+  (let [configs (configs/fetch)
+        ids-to-scan (-> (find-ids-to-scan (rd/remote-devices) configs)
                         (reorder-ids))
         scan-fn (fn [device-id]
-                  (scanning! device-id)
-                  (try
-                    (encoding/scan-device device-id (get target-objects device-id) object-delay)
-                    (finally (scanned! device-id))))]
+                  (let [{:keys [object-delay target-objects]} configs]
+                    (scanning! device-id)
+                    (try
+                      (encoding/scan-device device-id (get target-objects device-id) object-delay)
+                      (finally (scanned! device-id)))))]
     ;; we begin a new scan
     (with-scan-status ids-to-scan
       (apply merge (lazy/upmap batch-size scan-fn ids-to-scan)))))
