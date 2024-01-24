@@ -99,9 +99,59 @@
 (def ^{:private true} batch-size 20)
 
 (defn- reorder-ids
-  "Try to avoid consecutive ids" [ids]
-  (let [colls (partition-all (max 4 (int (/ batch-size 4))) ids)]
+  "Try to avoid consecutive ids"
+  [batch-size ids]
+  (let [id-qty (count ids)
+        segment-size (max 1 (int (/ id-qty batch-size)))
+        colls (partition-all segment-size ids)]
     (apply interleave-all colls)))
+
+(comment
+  ;; Simulate the effect of a BACnet network where a device
+  ;; communication affects its 'neighbor' communication speed. For
+  ;; example, an MS/TP loop with limited bandwidth.
+
+  ;; This is only to give a rough idea. Consider switching to
+  ;; 'virtual' time for more serious/rigorous testing.
+
+  (defn simulate!
+    [reorder-fn {:keys [batch-size group-size]}]
+    (time
+     (let [*fetching (atom {})
+           test-devices (for [i (range 250)
+                              :let [*ret (promise)
+                                    group (quot i group-size)]]
+                          (fn []
+                            (future
+                              ;; Increase delay if already fetching a device from same group.
+                              (let [penalty 1.4
+                                    factor (Math/pow penalty (inc (get @*fetching group 0)))]
+                                (Thread/sleep (* factor 100)))
+                              (deliver *ret i))
+                            (with-meta *ret {:id i, :group group})))]
+       (doall (lazy/upmap batch-size (fn [f]
+                                       (let [*ret (f)]
+                                         (Thread/sleep (+ 20 (rand-int 30)))
+                                         (let [{:keys [group id]} (meta *ret)
+                                               _ (swap! *fetching update group (fnil inc 0))
+                                               ret (deref *ret)
+                                               _ (swap! *fetching update group (fnil dec 1))]
+                                           ret)))
+                          (reorder-fn batch-size test-devices)))
+       nil)))
+
+  (simulate! reorder-ids {:batch-size 5, :group-size 25})       ;  7127 ms
+  (simulate! (fn [_ ids] ids) {:batch-size 5, :group-size 25})  ; 21406 ms
+
+  (simulate! reorder-ids {:batch-size 10, :group-size 25})      ;  3138 ms
+  (simulate! (fn [_ ids] ids) {:batch-size 10, :group-size 25}) ; 19614 ms
+
+  (simulate! reorder-ids {:batch-size 20, :group-size 25})      ;  2497 ms
+  (simulate! (fn [_ ids] ids) {:batch-size 20, :group-size 25}) ; 42834 ms
+
+  (simulate! reorder-ids {:batch-size 30, :group-size 25})      ;  2649 ms
+
+  )
 
 ;;;;;;;
 
@@ -109,8 +159,8 @@
 (defn scan-network
   "Scan the network and return a `snapshot' for logging purposes."[]
   (let [configs (configs/fetch)
-        ids-to-scan (-> (find-ids-to-scan (rd/remote-devices) configs)
-                        (reorder-ids))
+        ids-to-scan (->> (find-ids-to-scan (rd/remote-devices) configs)
+                         (reorder-ids batch-size))
         scan-fn (fn [device-id]
                   (let [{:keys [object-delay target-objects]} configs]
                     (scanning! device-id)
