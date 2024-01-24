@@ -97,9 +97,7 @@
 
                                   ;; If a scan takes longer than 2 hours, we have a problem...
                                   (tools/with-timeout (* 1000 60 60 2) ""
-                                    (log/info (str "Starting network scan at "
-                                                   (-> (l/local-now)
-                                                       (l/format-local-time :date-hour-minute-second))))
+                                    (log/info "Start scan")
                                     (reset! scan-active? true) ;; mark the scan as active
                                     (services/send-who-is-router-to-network nil)
                                     (rd/find-remote-devices) ;; In case of new devices
