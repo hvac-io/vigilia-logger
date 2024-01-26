@@ -1,8 +1,7 @@
 (ns vigilia-logger.timed
-  (:require [bacure.local-device :as ld]
+  (:require [bacure.core :as b]
             [bacure.remote-device :as rd]
             [bacure.services :as services]
-            [clj-time.local :as l]
             [clojure.tools.logging :as log]
             [overtone.at-at :as ot]
             [vigilia-logger.configs :as configs]
@@ -34,16 +33,6 @@
   [time-in-min]
   (* 60000 time-in-min))
 
-(defn init!
-  "Reset the local device, make a list of remote devices and find
-   those that should be excluded based on their properties."
-  []
-  (ld/reset-local-device!)
-  (rd/find-remote-devices)
-  (Thread/sleep 5000) ;; wait 5s
-  (log/info (str "Fetching extended information for " (count (rd/remote-devices)) " devices"))
-  (rd/all-extended-information)) ;; recheck for extented information
-
 (def scan-active? (atom nil))
 
 (defn start-logging
@@ -58,15 +47,12 @@
                      done in order to discard any `visitor devices'
                      that are no longer on the network, and to clean
                      some 'duplicates' that sometimes occur in the
-                     underlying Bacnet4j library.)
-
-  At start: we reset the local-device, discover the network, wait a
-  while and then start to log the network."[]
+                     underlying Bacnet4j library.)"
+  []
   (when-not (is-logging?) ;;don't log twice simultaneously
     (reset! logging-state "Mapping network")
     (log/info "Vigilia logger started")
     (future ;; in another thread
-      (init!)
       (when-not (= @logging-state "Stopped") ;; if we didn't stop the logging meanwhile
         (reset! logging-state "Logging")
         (let [time-interval (min-ms (or (:time-interval (configs/fetch)) 10)) ;; default 10 minutes
@@ -122,7 +108,7 @@
                                         (fn []
                                           (try
                                             (log/info "Restarting local BACnet device")
-                                            (init!)
+                                            (b/boot-up!)
                                             (catch Exception e
                                               (log/error (str "Exception: "(.getMessage e)))))))
                                pool
