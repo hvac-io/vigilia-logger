@@ -169,7 +169,7 @@
                       (finally (scanned! device-id)))))]
     ;; we begin a new scan
     (with-scan-status ids-to-scan
-      (apply merge (lazy/upmap batch-size scan-fn ids-to-scan)))))
+      (reduce merge (lazy/upmap batch-size scan-fn ids-to-scan)))))
 
 
 (defn find-unsent-logs []
