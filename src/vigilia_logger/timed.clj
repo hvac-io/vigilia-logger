@@ -35,6 +35,17 @@
 
 (def scan-active? (atom nil))
 
+(def *last-execution-time (atom 0))
+(defn throttled-find-remote-devices
+  "Same as `find-remote-devices`,
+  but will not be called more than once per hour."
+  []
+  (let [current-time (System/currentTimeMillis)]
+    (when (> (- current-time @*last-execution-time) (* 60 60 1000))
+      (reset! *last-execution-time current-time)
+      (rd/find-remote-devices))))
+
+
 (defn start-logging
   "Add jobs to be executed in the future and/or at regulvar interval.
 
@@ -86,7 +97,7 @@
                                     (log/info "Start scan")
                                     (reset! scan-active? true) ;; mark the scan as active
                                     (services/send-who-is-router-to-network nil)
-                                    (rd/find-remote-devices) ;; In case of new devices
+                                    (throttled-find-remote-devices) ;; In case of new devices
                                     (scan/scan-and-send)
                                     (log/info
                                      (format "Scan completed in %.2fs"
