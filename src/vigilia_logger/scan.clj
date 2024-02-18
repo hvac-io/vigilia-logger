@@ -96,8 +96,6 @@
                            (filter not-empty
                                    (concat (rest seqs) [(rest (first seqs))])))))))
 
-(def ^{:private true} batch-size 20)
-
 (defn- reorder-ids
   "Try to avoid consecutive ids"
   [batch-size ids]
@@ -159,6 +157,7 @@
 (defn scan-network
   "Scan the network and return a `snapshot' for logging purposes."[]
   (let [configs (configs/fetch)
+        batch-size (:parallel-device-scan-qty configs 20)
         ids-to-scan (->> (find-ids-to-scan (rd/remote-devices) configs)
                          (reorder-ids batch-size))
         scan-fn (fn [device-id]
