@@ -4,8 +4,8 @@
   :license {:name "GNU GENERAL PUBLIC LICENSE"
             :url "http://www.gnu.org/licenses/gpl.html"}
   :dependencies [[org.clojure/clojure "1.10.1"]
-                 
-                 [bacure "1.1.10"]
+
+                 [bacure "1.3.0"]
                  [clj-time "0.15.2"]
                  [trptcolin/versioneer "0.2.0"]
 
