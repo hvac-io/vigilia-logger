@@ -1,11 +1,11 @@
-(defproject io.hvac.vigilia/vigilia-logger "1.2.1"
+(defproject io.hvac.vigilia/vigilia-logger "1.3.0"
   :description "A library/app to record a BACnet network"
   :url "https://hvac.io"
   :license {:name "GNU GENERAL PUBLIC LICENSE"
             :url "http://www.gnu.org/licenses/gpl.html"}
   :dependencies [[org.clojure/clojure "1.10.1"]
 
-                 [bacure "1.3.0"]
+                 [bacure "1.3.1"]
                  [clj-time "0.15.2"]
                  [trptcolin/versioneer "0.2.0"]
 

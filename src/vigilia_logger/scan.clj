@@ -194,7 +194,7 @@
       (when error?
         (log/warn "Remote server can't be reached or refused the log.")
         ;; if it doesn't work, save log locally.
-        (when (> 2016 (count (find-unsent-logs))) ;; ~2 weeks
+        (when (> 4032 (count (find-unsent-logs))) ;; ~4 weeks
           (let [filename (str/join "-" ["vigilia"
                                         (configs/get-logger-id!)
                                         (str (encoding/timestamp)

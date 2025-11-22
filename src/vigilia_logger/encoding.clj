@@ -16,7 +16,7 @@
 ;; ================================================================
 ;; ======================= Data encoding ==========================
 ;; ================================================================
-(comment 
+(comment
   ;; Here is how the data should be encoded
 
   ;; Firstly, as opposed to the BACnet object scheme, we will not hide
@@ -107,7 +107,7 @@
 ;; ================================================================
 ;; ======================= Data retrieval =========================
 ;; ================================================================
-  
+
 
 (defn get-properties-by-type
   "Get the properties for the provided object-identifier"
@@ -127,7 +127,7 @@
   The returned properties are classed in a map, associated with the
   device instance as a key. It turns associated to the object type as
   a key.
-  
+
   {:0                  --- the object type
     {:1                --- the object instance
       {:Description    --- properties
@@ -203,14 +203,14 @@
     :name \"device-name\" ;; so we don't have to dig in the properties to get it.
     :scan-duration <time in ms>
     :objects \"<DATA>\"}}
-  
+
   Optional 'target-objects' is a collection of object
   identifiers (such as [:analog-input 1]) to restrict the scan to
   those objects.
 
   Optional 'read-object-delay' is the delay (in ms) between the scan
   of each object within a device.
-  
+
   If the remote device doesn't exist or isn't answering, return nil."
   ([device-id] (scan-device device-id nil))
   ([device-id device-target-objects] (scan-device device-id device-target-objects nil))
@@ -221,17 +221,22 @@
        (not (rd/is-alive? device-id)) (log/warn (str "Device "device-id " is unreachable."))
        (not (has-extended-info? device-id)) (log/warn (str "Device "device-id " extended-info is missing."))
        :else (let [start-time (timestamp)
+                   d-id-k (keyword (str device-id)) ;; Device-id is integer by default
                    ;; if we don't have device-target-objects, just use the remote-objects list
                    object-identifiers (-> (or device-target-objects
                                               (bac/remote-objects device-id))
                                           (conj [:device device-id]) ;; we always add the device object
                                           (distinct))
                    properties (-> (get-properties device-id object-identifiers read-object-delay)
-                                  (update-all-binaries))]
+                                  (update-all-binaries)
+                                  ;; Add routing info
+                                  ;; Prefix '_' to show that this isn't a normal BACnet object property.
+                                  (assoc-in [:8 d-id-k :_network] (rd/routing-info device-id)))]
                (when (seq properties) ;; only return something if we got some data
-                 {(keyword (str device-id))
+                 {d-id-k
                   {:update        (iso-8601-timestamp)
-                   :name          (get-in properties [:8 (keyword (str device-id)) :Object-name])
+                   :name          (get-in properties [:8 d-id-k :Object-name])
+                   :network       (get-in properties [:8 d-id-k :_network])
                    :objects       properties
                    :scan-duration (- (timestamp) start-time)}})))
      (catch Exception e
