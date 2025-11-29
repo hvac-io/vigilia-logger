@@ -12,6 +12,12 @@
            (-> (http/transit-encode data)
                (http/transit-decode))))))
 
+(deftest roundtrip-nippy
+  (let [data {:a 1, :b "text", :c {:d :nested}, :e [1 2 3]}]
+    (is (= data
+           (-> (http/nippy-encode data)
+               (http/nippy-decode))))))
+
 (deftest transit-request
   (let [transit-echo-handler
         (fn [req]
@@ -52,7 +58,6 @@
     (is (not (http/can-connect? wrong-port-url))
         "Do not throw on 'connection refused'")))
 
-
 (defn make-handler
   "Will convert response to transit if the metadata :transit? is true.
 
@@ -78,12 +83,14 @@
      - GET: Returns map of :logging-allowed? and :href
      - POST: accepts logs with post-fn"
   ([req] (simple-vigilia-handler (constantly "logs accepted") req))
-  ([post-fn req]
+  ([post-fn req] (simple-vigilia-handler post-fn false req))
+  ([post-fn accept-nippy? req]
    (let [project-path (u/path :project u/project-id)
          logging-path (u/path :project u/project-id :logging)
          handler (make-handler {project-path {:get ^:transit? {:logging {:href (u/url logging-path)}}}
                                 logging-path {:get ^:transit? {:href             (u/url logging-path)
-                                                               :logging-allowed? true}
+                                                               :logging-allowed? true
+                                                               :accept-nippy?    accept-nippy?}
                                               :post post-fn}})]
      (handler req))))
 
@@ -91,6 +98,7 @@
   (u/with-test-configs
     (u/with-server simple-vigilia-handler
       (is (= {:logging-allowed? true
+              :accept-nippy?    false
               :href             (u/url :project u/project-id :logging)}
              (http/fetch-project-logger-data u/project-id u/logger-key))))
     (u/with-server (fn [req] {:status 404})
@@ -108,14 +116,14 @@
 
 (deftest send-log
   (let [*posted (atom nil)
-          log {:1234 {:name "My device"}
-               :1235 {:name "My other device"}}
-          handler (partial simple-vigilia-handler
+        log {:1234 {:name "My device"}
+             :1235 {:name "My other device"}}
+        handler (partial simple-vigilia-handler
                            ;; This is how we handle logging 'post'
-                           (fn post [req]
-                             (when-let [body (some-> req :body slurp http/transit-decode)]
-                               (reset! *posted body)
-                               "Accepted!")))]
+                         (fn post [req]
+                           (when-let [body (some-> req :body slurp http/transit-decode)]
+                             (reset! *posted body)
+                             "Accepted!")))]
     (u/with-test-configs
       (u/with-server (fn [req] {:status 403})
         (is (http/send-log log) "Returns non nil on error"))
@@ -132,3 +140,26 @@
       (u/with-test-configs
         (configs/save! {:api-root wrong-port-url})
         (is (http/send-log log) "Not nil on exception")))))
+
+(deftest send-log-with-nippy
+  (let [*posted (atom nil)
+        log {:1234 {:name "My device"}
+             :1235 {:name "My other device"}}
+        handler (partial simple-vigilia-handler
+                         (fn post [req]
+                           (when-let [body (some-> req :body slurp http/transit-decode)]
+                             (reset! *posted body)
+                             "Accepted!"))
+                         true)] ;; accept-nippy? = true
+    (u/with-test-configs
+      (u/with-server handler
+        (is (nil? (http/send-log log))
+            "Nil on success")
+        ;; Server should receive nippy-logs, not logs
+        (is (contains? @*posted :nippy-logs)
+            "Should contain :nippy-logs")
+        (is (not (contains? @*posted :logs))
+            "Should NOT contain :logs")
+        ;; Decode the nippy-logs and verify contents
+        (is (= log (http/nippy-decode (:nippy-logs @*posted)))
+            "Decoded nippy-logs should match original log")))))

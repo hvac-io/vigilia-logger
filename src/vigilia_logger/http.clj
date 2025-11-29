@@ -1,6 +1,7 @@
 (ns vigilia-logger.http
   (:require [clj-http.client :as http-client]
             [cognitect.transit :as transit]
+            [taoensso.nippy :as nippy]
             [trptcolin.versioneer.core :as version]
             [vigilia-logger.configs :as configs])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]))
@@ -23,10 +24,20 @@
      ;; get the encoded data
      (.toString out "UTF-8"))))
 
+(defn nippy-encode
+  "Encode data to a Nippy string using zstd compression."
+  [data]
+  (nippy/freeze-to-string data {:compressor nippy/zstd-compressor}))
+
+(defn nippy-decode
+  "Decode a Nippy string back to data."
+  [string]
+  (nippy/thaw-from-string string))
+
 (defn error?
   "True if response has :error, or if the http status is not one of the
   successful ones (200 ... 226).
-  "[response]
+  " [response]
   (let [successful-statuses #{200 201 202 203
                               204 205 206 207
                               208 226}]
@@ -98,7 +109,6 @@
        (when-not (error? response)
          (:body response))))))
 
-
 (defn credentials-valid?
   "True if credentials can connect to Vigilia server.
   Any http error (including 403) will return false."
@@ -121,22 +131,20 @@
   [log]
   (try
     (let [{:keys [project-id logger-key]} (configs/fetch)
-          {:keys [logging-allowed? href]} (fetch-project-logger-data project-id logger-key)]
+          {:keys [logging-allowed? href accept-nippy?]} (fetch-project-logger-data project-id logger-key)]
       ;; Check if server intends to accept our scan
       (if-not logging-allowed?
         :logging-not-allowed
-        (let [response (request {:url      href
+        (let [body (cond-> {:logger-key     logger-key
+                            :logger-id      (configs/get-logger-id!)
+                            :logger-version logger-version}
+                     ;; Use nippy if server accepts it, otherwise fall back to EDN
+                     accept-nippy? (assoc :nippy-logs (nippy-encode log))
+                     (not accept-nippy?) (assoc :logs log))
+              response (request {:url      href
                                  :method   :post
                                  :as       :text
-                                 :body     {:logger-key     logger-key
-                                            :logger-id      (configs/get-logger-id!)
-                                            :logger-version logger-version
-                                            ; For historical reason the
-                                            ; API expects :logs, but it
-                                            ; makes more sense to call it
-                                            ; :log (singular) in this
-                                            ; codebase.
-                                            :logs           log}
+                                 :body     body
                                  :transit? true})]
           (when (error? response)
             response))))
