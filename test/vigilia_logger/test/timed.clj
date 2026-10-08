@@ -13,10 +13,18 @@
   [m]
   (configs/save! (merge (configs/fetch) m)))
 
+(deftest who-is-range
+  (is (nil? (timed/who-is-range {})) "no range: global Who-Is")
+  (is (= {:min-range 101 :max-range 199} (timed/who-is-range {:min-range 100 :max-range 200}))
+      "logger ranges are exclusive, BACnet ranges are inclusive")
+  (is (= {:min-range 101} (timed/who-is-range {:min-range 100})))
+  (is (= {:max-range 199} (timed/who-is-range {:max-range 200}))))
+
 (deftest discovery-interval
   (u/with-test-configs
-    (let [who-is (atom 0)]
-      (with-redefs [rd/find-remote-devices (fn [& _] (swap! who-is inc))]
+    (let [who-is (atom 0)
+          ranges (atom [])]
+      (with-redefs [rd/find-remote-devices (fn [_ range] (swap! who-is inc) (swap! ranges conj range))]
         (testing "by default, at most one Who-Is per hour"
           (reset! timed/*last-execution-time 0)
           (timed/throttled-find-remote-devices)
@@ -33,6 +41,13 @@
           (reset! timed/*last-execution-time (- (System/currentTimeMillis) (* 6 60 1000)))
           (timed/throttled-find-remote-devices)
           (is (= 1 @who-is) "6 minutes ago: time to ask again"))
+
+        (testing "restricted to the configured range"
+          (is (= [nil nil] @ranges) "so far: global Who-Is")
+          (with-configs! {:min-range 1000 :max-range 2000})
+          (reset! timed/*last-execution-time 0)
+          (timed/throttled-find-remote-devices)
+          (is (= {:min-range 1001 :max-range 1999} (last @ranges))))
 
         (testing "0 disables it"
           (with-configs! {:discovery-interval 0})

@@ -56,8 +56,8 @@ There is many configuration options:
  ;; Each project will only accept payloads when given with a secret
  ;; key. This prevents unwanted writes into projects.
 
- :min-range ;; Only devices with IDs higher will be recorded.
- :max-range ;; Only devices with IDs lower will be recorded.
+ :min-range ;; Only devices with IDs higher will be recorded. (Also restricts our Who-Is.)
+ :max-range ;; Only devices with IDs lower will be recorded. (Also restricts our Who-Is.)
  :id-to-remove  ;; Remove devices by their ID
  :id-to-keep    ;; keep devices by their ID
  :time-interval ;; Time interval between each snapshots (in minutes)
