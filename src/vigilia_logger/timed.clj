@@ -50,30 +50,41 @@
     (when (pos? minutes)
       (min-ms minutes))))
 
+(def max-device-id 4194303)
+
 (defn who-is-range
   "The device ID range for our Who-Is, from the configs. Only the
   devices within :min-range and :max-range (when set) will answer,
-  instead of the whole network. Nil when no range is configured."
+  instead of the whole network.
+
+  Nil when no range is configured (unrestricted Who-Is); :empty when
+  no device ID can satisfy the configs (nothing to ask)."
   [{:keys [min-range max-range]}]
   (when (or min-range max-range)
-    ;; The logger ranges are exclusive; the BACnet ones are inclusive.
-    (cond-> {}
-      min-range (assoc :min-range (inc min-range))
-      max-range (assoc :max-range (dec max-range)))))
+    ;; The logger ranges are exclusive; the BACnet ones are inclusive,
+    ;; and limited to 0..4194303.
+    (let [low  (max 0 (if min-range (inc min-range) 0))
+          high (min max-device-id (if max-range (dec max-range) max-device-id))]
+      (if (<= low high)
+        {:min-range low :max-range high}
+        :empty))))
 
 (def *last-execution-time (atom 0))
 (defn throttled-find-remote-devices
   "Same as `find-remote-devices`, but not more than once
   per :discovery-interval (60 minutes by default), and restricted to
   the configured device ID range, if any. Does nothing if the
-  interval is 0."
+  interval is 0, or if the configs can't be read."
   []
-  (let [configs (configs/fetch)]
+  (when-let [configs (configs/fetch)]
     (when-let [interval-ms (discovery-interval-ms configs)]
       (let [current-time (System/currentTimeMillis)]
         (when (> (- current-time @*last-execution-time) interval-ms)
           (reset! *last-execution-time current-time)
-          (rd/find-remote-devices nil (who-is-range configs)))))))
+          (let [range (who-is-range configs)]
+            (if (= range :empty)
+              (log/warn "No device ID can satisfy min-range/max-range; Who-Is skipped.")
+              (rd/find-remote-devices nil range))))))))
 
 ;;; Perimeter
 

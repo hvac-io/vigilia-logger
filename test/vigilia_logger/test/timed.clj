@@ -17,8 +17,15 @@
   (is (nil? (timed/who-is-range {})) "no range: global Who-Is")
   (is (= {:min-range 101 :max-range 199} (timed/who-is-range {:min-range 100 :max-range 200}))
       "logger ranges are exclusive, BACnet ranges are inclusive")
-  (is (= {:min-range 101} (timed/who-is-range {:min-range 100})))
-  (is (= {:max-range 199} (timed/who-is-range {:max-range 200}))))
+  (is (= {:min-range 101 :max-range timed/max-device-id} (timed/who-is-range {:min-range 100})))
+  (is (= {:min-range 0 :max-range 199} (timed/who-is-range {:max-range 200})))
+  (testing "bounds are kept within the BACnet device ID range"
+    (is (= {:min-range 0 :max-range 99} (timed/who-is-range {:min-range -2 :max-range 100})))
+    (is (= {:min-range 0 :max-range timed/max-device-id} (timed/who-is-range {:min-range -1 :max-range 5000000}))))
+  (testing "no possible device ID: nothing to ask"
+    (is (= :empty (timed/who-is-range {:max-range 0})))
+    (is (= :empty (timed/who-is-range {:min-range 200 :max-range 100})))
+    (is (= :empty (timed/who-is-range {:min-range 100 :max-range 101})) "exclusive bounds: nothing between")))
 
 (deftest discovery-interval
   (u/with-test-configs
@@ -48,6 +55,18 @@
           (reset! timed/*last-execution-time 0)
           (timed/throttled-find-remote-devices)
           (is (= {:min-range 1001 :max-range 1999} (last @ranges))))
+
+        (testing "an empty range or unreadable configs: no Who-Is"
+          (reset! who-is 0)
+          (with-configs! {:min-range 200 :max-range 100})
+          (reset! timed/*last-execution-time 0)
+          (timed/throttled-find-remote-devices)
+          (is (= 0 @who-is) "empty range")
+          (local/mkdir-spit (str configs/path "/configs.edn") "{:min-range")
+          (reset! timed/*last-execution-time 0)
+          (timed/throttled-find-remote-devices)
+          (is (= 0 @who-is) "unreadable configs")
+          (with-configs! {:min-range nil :max-range nil}))
 
         (testing "0 disables it"
           (with-configs! {:discovery-interval 0})
