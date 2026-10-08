@@ -154,10 +154,19 @@
 ;;;;;;;
 
 
+(declare scan-network*)
+
 (defn scan-network
-  "Scan the network and return a `snapshot' for logging purposes."[]
-  (let [configs (configs/fetch)
-        batch-size (:parallel-device-scan-qty configs 20)
+  "Scan the network and return a `snapshot' for logging purposes.
+  Nil (and no scan) if the configs can't be read: without them we
+  wouldn't know which devices to scan." []
+  (if-let [configs (configs/fetch)]
+    (scan-network* configs)
+    (log/error "Can't read the logger configs; skipping the scan.")))
+
+(defn- scan-network*
+  [configs]
+  (let [batch-size (:parallel-device-scan-qty configs 20)
         ids-to-scan (->> (find-ids-to-scan (rd/remote-devices) configs)
                          (reorder-ids batch-size))
         scan-fn (fn [device-id]
@@ -168,7 +177,9 @@
                       (finally (scanned! device-id)))))]
     ;; we begin a new scan
     (with-scan-status ids-to-scan
-      (reduce merge (lazy/upmap batch-size scan-fn ids-to-scan)))))
+      ;; ({} rather than nil for an empty network: nil means 'no scan')
+      (or (reduce merge (lazy/upmap batch-size scan-fn ids-to-scan))
+          {}))))
 
 
 (defn find-unsent-logs []
@@ -188,7 +199,7 @@
   can't be reached, save the result in a .log file. Only saves up to
   2016 logs."
   []
-  (let [log (scan-network)]
+  (when-let [log (scan-network)]
     ;; try to send to server
     (let [error? (http/send-log log)] ;; nil on success
       (when error?

@@ -15,7 +15,12 @@
   ([timeout-ms f] (timeout timeout-ms f nil))
   ([timeout-ms f timeout-msg]
    (let [fut (future (f))
-         ret (deref fut timeout-ms ::timed-out)]
+         ret (try (deref fut timeout-ms ::timed-out)
+                  (catch InterruptedException e
+                    ;; We were interrupted while waiting (for example
+                    ;; by `stop-logging`): don't leave the body running.
+                    (future-cancel fut)
+                    (throw e)))]
      (when (= ret ::timed-out)
        (future-cancel fut)
        (throw (timeout-exception timeout-ms timeout-msg)))

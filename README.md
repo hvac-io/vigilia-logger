@@ -61,6 +61,7 @@ There is many configuration options:
  :id-to-remove  ;; Remove devices by their ID
  :id-to-keep    ;; keep devices by their ID
  :time-interval ;; Time interval between each snapshots (in minutes)
+ :discovery-interval ;; Minutes between two Who-Is broadcasts to find new devices (default 60, 0 to disable)
  :object-delay  ;; Delay (in ms) between each object scan of a device.
  :target-objects ;; Map of devices and there associated target object identifiers (if any).
  }

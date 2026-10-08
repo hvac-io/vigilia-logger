@@ -83,3 +83,20 @@
             (http/send-log {:a 1})
             (scan/send-local-logs)
             (is (= 0 (count (scan/find-unsent-logs))))))))))
+
+(deftest no-scan-without-configs
+  (testing "An unreadable config file must not turn into an unrestricted scan"
+    (timbre/with-level :fatal
+      (u/with-test-configs
+        (let [scanned (atom [])]
+          (with-redefs [bacure.remote-device/remote-devices (fn [& _] #{1 2 3})
+                        vigilia-logger.encoding/scan-device (fn [id & _] (swap! scanned conj id) {id {}})]
+            (configs/save! (merge (configs/fetch) {:id-to-keep [2]}))
+            (scan/scan-network)
+            (is (= [2] @scanned) "sanity check: the perimeter applies")
+
+            (reset! scanned [])
+            (local/mkdir-spit (io/file configs/path "configs.edn") "{:id-to-keep [2")
+            (is (nil? (configs/fetch)))
+            (is (nil? (scan/scan-network)))
+            (is (empty? @scanned))))))))

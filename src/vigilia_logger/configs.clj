@@ -13,10 +13,10 @@
   Nil on exception."
   []
   (let [remove-nil-in-maps #(into {} (remove (comp nil? val) %))]
-    (try (->> (configs-path)
-              slurp
-              local/safe-read
-              remove-nil-in-maps)
+    (try (some->> (configs-path)
+                  slurp
+                  local/safe-read ; nil if unreadable
+                  remove-nil-in-maps)
          (catch Exception e))))
 
 (defn save!

@@ -15,9 +15,12 @@
 (defonce logging-state
   (atom "Stopped"))
 
+(def scan-active? (atom nil))
+
 (defn stop-logging []
   (ot/stop-and-reset-pool! pool :strategy :kill)
   (reset! logging-state "Stopped")
+  (reset! scan-active? nil)
   (log/info "Vigilia logger stopped"))
 
 (defn restart-logging []
@@ -33,17 +36,73 @@
   [time-in-min]
   (* 60000 time-in-min))
 
-(def scan-active? (atom nil))
+;;; Network discovery
+
+(def default-discovery-interval
+  "Minutes between two automatic Who-Is broadcasts."
+  60)
+
+(defn discovery-interval-ms
+  "Delay between two automatic Who-Is broadcasts, from the
+  configs (:discovery-interval, in minutes). Nil when disabled (0)."
+  [configs]
+  (let [minutes (:discovery-interval configs default-discovery-interval)]
+    (when (pos? minutes)
+      (min-ms minutes))))
 
 (def *last-execution-time (atom 0))
 (defn throttled-find-remote-devices
-  "Same as `find-remote-devices`,
-  but will not be called more than once per hour."
+  "Same as `find-remote-devices`, but not more than once
+  per :discovery-interval (60 minutes by default). Does nothing if the
+  interval is 0."
   []
-  (let [current-time (System/currentTimeMillis)]
-    (when (> (- current-time @*last-execution-time) (* 60 60 1000))
-      (reset! *last-execution-time current-time)
-      (rd/find-remote-devices))))
+  (when-let [interval-ms (discovery-interval-ms (configs/fetch))]
+    (let [current-time (System/currentTimeMillis)]
+      (when (> (- current-time @*last-execution-time) interval-ms)
+        (reset! *last-execution-time current-time)
+        (rd/find-remote-devices)))))
+
+;;; Perimeter
+
+;; The configs are read from the disk; don't do it for every I-Am.
+(def ^:dynamic *perimeter-configs-max-age-ms* 60000)
+
+(defonce ^:private perimeter-configs
+  (atom {:at 0 :configs nil}))
+
+(defn- current-perimeter-configs
+  "The logger configs, re-read at most every
+  `*perimeter-configs-max-age-ms*`. If the configs can't be read, the
+  last valid ones are kept."
+  []
+  (let [now (System/currentTimeMillis)
+        {:keys [at configs]} @perimeter-configs]
+    (if (< (- now at) *perimeter-configs-max-age-ms*)
+      configs
+      (let [configs (or (configs/fetch) configs)]
+        (reset! perimeter-configs {:at now :configs configs})
+        configs))))
+
+(defn in-perimeter?
+  "True if the device would be scanned with the current configs
+  (id-to-keep, id-to-remove, min-range, max-range)."
+  [device-id]
+  (boolean (seq (scan/find-ids-to-scan [device-id] (current-perimeter-configs)))))
+
+(defn auto-fetch-filter
+  "Filter for `bacure.remote-device/set-auto-fetch-filter!`: while
+  logging, Bacure only fetches on its own the extended information of
+  the devices we scan. When not logging, everything is fetched, as
+  usual."
+  [device-id]
+  (or (not (is-logging?))
+      (in-perimeter? device-id)))
+
+(defn install-auto-fetch-filter!
+  "Restrict what Bacure fetches on its own to our perimeter (see
+  `auto-fetch-filter`)."
+  []
+  (rd/set-auto-fetch-filter! auto-fetch-filter))
 
 
 (defn start-logging
@@ -52,7 +111,9 @@
   :logger ---------> We scan the network at a regulvar time
                      interval (:time-interval in the configs). Also,
                      check for configuration update and send back any
-                     local logs found.
+                     local logs found. A Who-Is is sent
+                     every :discovery-interval minutes (60 by default,
+                     0 to disable).
 
   ;refresh --------> Restart the local device each week. (This is
                      done in order to discard any `visitor devices'
@@ -60,9 +121,9 @@
                      some 'duplicates' that sometimes occur in the
                      underlying Bacnet4j library.)"
   []
-  (when-not (is-logging?) ;;don't log twice simultaneously
-    (reset! logging-state "Mapping network")
+  (when (compare-and-set! logging-state "Stopped" "Mapping network") ;;don't log twice simultaneously
     (log/info "Vigilia logger started")
+    (install-auto-fetch-filter!)
     (future ;; in another thread
       (when-not (= @logging-state "Stopped") ;; if we didn't stop the logging meanwhile
         (reset! logging-state "Logging")
@@ -106,10 +167,12 @@
                                   (catch Exception e
                                     (log/error (str "Network scan exception: "(.getMessage e)))))
 
-                                (when-let [f @after-scan-fn]
-                                  (f)
-                                  (reset! after-scan-fn nil))
-                                (reset! scan-active? nil))))
+                                (try
+                                  (when-let [f @after-scan-fn]
+                                    (f)
+                                    (reset! after-scan-fn nil))
+                                  (finally
+                                    (reset! scan-active? nil))))))
                           pool
                           :desc "Logging the network"))
               logger-job-atom (atom (logger-job-fn))]
@@ -119,7 +182,7 @@
                                         (fn []
                                           (try
                                             (log/info "Restarting local BACnet device")
-                                            (b/boot-up!)
+                                            (b/boot-up! nil {:auto-fetch-filter auto-fetch-filter})
                                             (catch Exception e
                                               (log/error (str "Exception: "(.getMessage e)))))))
                                pool
